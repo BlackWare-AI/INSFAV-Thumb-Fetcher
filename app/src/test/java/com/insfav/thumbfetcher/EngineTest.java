@@ -137,7 +137,7 @@ public class EngineTest {
     @Test public void singleProfileDiagnosticWritesOnePhotoButDoesNotUnlockBatch() throws Exception {
         queue.replace(ImportTest.parse("[{\"items\":[{\"pageId\":\"one\"}]}]"));
         int[] calls={0}; engine(provider(calls,200)).run("test_one",false);
-        assertEquals(3,calls[0]); assertFalse(SessionState.verified(prefs));
+        assertEquals(3,calls[0]); assertFalse(SessionState.verified(prefs)); assertEquals(1,prefs.getInt("verifiedProfiles",0));
         assertTrue(new OutputFolder(storage.context,storage.tree.toString()).valid("one.webp"));
         assertTrue(prefs.getString("state","").contains("One profile photo verified"));
     }

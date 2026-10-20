@@ -94,7 +94,7 @@ final class QueueEngine {
                 if (single) { singleState(queue); return; }
             }
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);
-            else if (one) { state(verified == 1 ? "One profile photo verified. Run Test Cookies for up to five profiles." : "One-profile test incomplete; see failure details."); log.log("COOKIE", "SINGLE_PROFILE_TEST", verified); }
+            else if (one) { settings.edit().putInt("verifiedProfiles", verified).commit(); state(verified == 1 ? "One profile photo verified. Run Test Cookies for up to five profiles." : "One-profile test incomplete; see failure details."); log.log("COOKIE", "SINGLE_PROFILE_TEST", verified); }
             else if (preflight && verified >= 3) { SessionState.verified(context, generation, verified); state(sessionVerified ? "Session verified · " + verified + " profile photos verified. Ready for Start Missing." : verified + " profile photos verified · Session identity unverified. Ready for Start Missing."); log.log("COOKIE", "PREFLIGHT_VERIFIED", verified); }
             else if (preflight) { block("COOKIE_PREFLIGHT_INCOMPLETE"); log.log("COOKIE", "PREFLIGHT_INCOMPLETE", verified); }
             else if (queue.pending().isEmpty()) { settings.edit().putBoolean("armed", false).commit(); state("Completed"); }
