@@ -6,7 +6,7 @@ HTTP 200 pages with a routed PolarisErrorRoot server component are classified PR
 
 Live access remains unresolved: a read-only, unauthenticated request for the user-provided existing profile returned HTTP 200 with an error root and no profile picture metadata. This environment has not verified an authenticated real photo download. No real cookies or account identifiers are included in source or fixtures. This build changes queue handling and diagnostics; it does not claim to repair Instagram access.
 
-Automated regression tests cover persistent/retryable skipped state, selection of untried profiles, continuing after three HTTP 404 responses, server error-page detection and keeping an HTTP 200 error page separate from nonexistent accounts. CI verification pending for this commit.
+Automated regression tests cover persistent/retryable skipped state, selection of untried profiles, continuing after three HTTP 404 responses, server error-page detection and keeping an HTTP 200 error page separate from nonexistent accounts. All 64 automated tests passed with zero failures/errors. Debug and R8/resource-shrunk release builds and lint succeeded. Tested application commit: 606644a3efa7cbdb952c55d525aac2459210e910. CI: https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39438493291 . Artifact: https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39438493291/artifacts/12273358005 . Debug APK: 2,480,291 bytes; SHA-256 85fcdb4c02a784e1762daa49f00947aa772c7ca2a9f09fb9818012feb3e5c712. Unsigned shrunk release: 258,677 bytes. VersionCode 5, versionName 0.2.3; no dependency changes. These tests use controlled fixtures, not live authenticated Instagram access.
 
 ---
 
