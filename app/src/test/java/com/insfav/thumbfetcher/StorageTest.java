@@ -52,8 +52,22 @@ public class StorageTest {
         try { output.write(name, ThumbnailCodec.convert(CodecTest.png(140, 140))); fail(); } catch (IOException expected) { }
         assertFalse(output.valid(name)); assertTrue(new File(provider.root, ".thumbnails/" + name + ".part").isFile());
     }
+    @Test public void legacyRefreshRestoresOriginalWhenCommitRenameFails() throws Exception {
+        OutputFolder output = new OutputFolder(context, tree.toString()); byte[] original = CodecTest.legacy(); String name = "synthetic.webp";
+        output.write(name, original); provider.rejectCommit = true;
+        try { output.write(name, ThumbnailCodec.convert(CodecTest.png(320,320)), true); fail(); } catch (IOException expected) { }
+        provider.rejectCommit = false; OutputFolder reopened = new OutputFolder(context,tree.toString()); reopened.recover(name);
+        assertTrue(reopened.valid(name)); assertArrayEquals(original,reopened.thumbnail(name));
+    }
+    @Test public void interruptedRefreshRestoresBackupOnNextOpen() throws Exception {
+        OutputFolder output = new OutputFolder(context,tree.toString()); byte[] original=CodecTest.legacy(); output.write("synthetic.webp",original);
+        File folder=new File(provider.root,".thumbnails"); assertTrue(new File(folder,"synthetic.webp").renameTo(new File(folder,"synthetic.webp.bak")));
+        Files.write(new File(folder,"synthetic.webp.part").toPath(),new byte[]{1,2});
+        OutputFolder reopened=new OutputFolder(context,tree.toString()); reopened.recover("synthetic.webp"); assertArrayEquals(original,reopened.thumbnail("synthetic.webp"));
+        assertFalse(new File(folder,"synthetic.webp.bak").exists()); assertFalse(new File(folder,"synthetic.webp.part").exists());
+    }
     public static class Fixture extends DocumentsProvider {
-        File root; int writes; boolean rejectRename;
+        File root; int writes; boolean rejectRename, rejectCommit;
         static final String[] DEFAULT = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE};
         File file(String id) { return id.equals("root") ? root : new File(root, id.substring(5)); }
         String id(File file) { String rel = root.toPath().relativize(file.toPath()).toString(); return rel.isEmpty() ? "root" : "root/" + rel; }
@@ -83,7 +97,7 @@ public class StorageTest {
             return id(file);
         }
         @Override public String renameDocument(String old, String name) throws FileNotFoundException {
-            if (rejectRename) throw new UnsupportedOperationException();
+            if (rejectRename || rejectCommit && old.endsWith(".part")) throw new UnsupportedOperationException();
             File target = new File(file(old).getParentFile(), name); if (!file(old).renameTo(target)) throw new FileNotFoundException(); return id(target);
         }
         @Override public void deleteDocument(String id) throws FileNotFoundException { if (!file(id).delete()) throw new FileNotFoundException(); }

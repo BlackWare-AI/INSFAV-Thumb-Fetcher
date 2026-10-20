@@ -70,7 +70,7 @@ public class EngineTest {
     }
     @Test public void concurrencyMatrixHasBoundedUniqueAssignmentsAndExactlyOnceResults() throws Exception {
         for(int limit:new int[]{1,2,5,10,30}) {
-            accounts(limit*2); prefs.edit().putInt("concurrentWebViews",limit).putLong("nextRequestAt",0).commit();
+            BackupParser.Result matrix = new BackupParser.Result(); for (int i=0;i<limit*2;i++) matrix.users.add("matrix_"+limit+"_"+i); queue.replace(matrix); prefs.edit().putInt("concurrentWebViews",limit).putLong("nextRequestAt",0).commit();
             AtomicInteger active=new AtomicInteger(), peak=new AtomicInteger(); Set<String> users=ConcurrentHashMap.newKeySet();
             CountDownLatch firstWave=new CountDownLatch(limit);
             ProfileProvider provider=fake(user -> {

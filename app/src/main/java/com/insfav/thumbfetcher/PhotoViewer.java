@@ -70,7 +70,7 @@ final class PhotoViewer {
         main.post(() -> {
             if (closed) { bitmap.recycle(); return; }
             // Keep the thumbnail if the source offers fewer pixels.
-            if (remote && image.bitmap != null && (long)bitmap.getWidth() * bitmap.getHeight() < (long)image.bitmap.getWidth() * image.bitmap.getHeight()) { bitmap.recycle(); label.append(" · Source offers no larger image"); return; }
+            if (remote && image.bitmap != null && (long)bitmap.getWidth() * bitmap.getHeight() < (long)image.bitmap.getWidth() * image.bitmap.getHeight()) { bitmap.recycle(); label.append(" · " + width + " × " + height + " source offers no larger image"); return; }
             image.replace(bitmap);
             label.setText(user + " · " + (remote ? width : bitmap.getWidth()) + " × " + (remote ? height : bitmap.getHeight())
                 + (remote ? " source" : " local thumbnail") + (remote && (width != bitmap.getWidth() || height != bitmap.getHeight()) ? " · Display sampled to " + bitmap.getWidth() + " × " + bitmap.getHeight() : ""));
