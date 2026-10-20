@@ -34,7 +34,7 @@ final class QueueEngine {
                 if (System.currentTimeMillis() < settings.getLong("retryAt", 0)) { block("RATE_LIMITED"); return; }
                 settings.edit().putString("verifiedGeneration", "").putInt("verifiedProfiles", 0).commit();
                 state("Testing cookie session"); provider.authenticate(); log.log("COOKIE", "SESSION_VERIFIED", 0);
-                if (queue.users(false).size() < 3 || settings.getString("tree", "").isEmpty()) { state("Cookies Valid. Import at least 3 accounts, then Test Cookies again."); return; }
+                if (queue.users(false).size() < 3 || settings.getString("tree", "").isEmpty()) { state("Cookies Valid. Select an output folder and import at least 3 accounts, then Test Cookies again."); return; }
             } else if (!SessionState.verified(settings)) { block("COOKIE_PREFLIGHT_REQUIRED"); return; }
             if ("missing".equals(action) || "failed".equals(action)) queue.reset(queue.users("failed".equals(action)));
             RunPolicy policy = RunPolicy.read(settings);
@@ -76,7 +76,7 @@ final class QueueEngine {
                 attempts++; totalMillis += android.os.SystemClock.elapsedRealtime() - started;
                 QueueControl.etaSeconds = attempts >= 3 ? (targets.size() - index - 1L) * (totalMillis / attempts + (policy.minimum + policy.maximum) * 500L) / 1000 : -1;
                 if (preflight && verified >= 3) { SessionState.verified(context, generation, verified); state("Cookies Valid · 3 profiles verified. Ready for Start Missing."); log.log("COOKIE", "PREFLIGHT_VERIFIED", verified); return; }
-                if (single) return;
+                if (single) { state("Waiting for next scheduled profile"); return; }
             }
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);
             else if (preflight) { block("COOKIE_PREFLIGHT_INCOMPLETE"); log.log("COOKIE", "PREFLIGHT_INCOMPLETE", verified); }

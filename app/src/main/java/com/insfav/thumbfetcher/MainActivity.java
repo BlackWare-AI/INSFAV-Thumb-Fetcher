@@ -49,7 +49,7 @@ public final class MainActivity extends Activity {
         status = text("Idle", 14, 0xffaaaaaa); layout.addView(status);
         start = button(layout, "Start Missing", view -> begin("missing"));
         pause = button(layout, "Pause / Resume", view -> {
-            if (QueueControl.lock.get()) { QueueControl.pause(this, false); status.setText("Pausing after the current request…"); }
+            if (QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true) && settings.getString("blocked", "").isEmpty())) { QueueControl.pause(this, false); status.setText("Pausing after the current request…"); }
             else begin("resume");
         });
         stop = button(layout, "Stop", view -> QueueControl.pause(this, true));
@@ -192,8 +192,8 @@ public final class MainActivity extends Activity {
         cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured · Profiles verified: " + settings.getInt("verifiedProfiles", 0) + "/3" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;
-        selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get());
-        pause.setText(QueueControl.lock.get() ? "Pause" : "Resume");
+        selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get() || settings.getBoolean("armed", false));
+        pause.setText(QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true) && settings.getString("blocked", "").isEmpty()) ? "Pause" : "Resume");
         for (View view : configurationViews) view.setEnabled(!active);
         cookieInput.setEnabled(!active);
     }
