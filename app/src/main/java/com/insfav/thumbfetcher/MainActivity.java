@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
         stop = button(layout, "Stop", view -> QueueControl.pause(this, true));
         button(layout, "More", view -> {
             PopupMenu menu = new PopupMenu(this, view);
+            menu.getMenu().add("Test One Profile").setOnMenuItemClickListener(item -> { begin("test_one"); return true; });
             menu.getMenu().add("Retry Failed").setOnMenuItemClickListener(item -> { begin("failed"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
             menu.show();
@@ -74,13 +75,13 @@ public final class MainActivity extends Activity {
         if (busy || QueueControl.lock.get() || launchPending) return;
         if (!new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
         if (!saveSchedule()) return;
-        if (!"test".equals(action) && !SessionState.verified(settings)) { message("Use Test Cookies to verify access to 3 profile photos first"); return; }
-        if (!"test".equals(action) && (settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
+        if (!action.startsWith("test") && !SessionState.verified(settings)) { message("Use Test Cookies to verify access to 3 profile photos first"); return; }
+        if (!action.startsWith("test") && (settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
         WorkScheduler.cancel(this);
-        if ("test".equals(action)) settings.edit().putBoolean("armed", false).putBoolean("userPaused", true).putString("blocked", "").commit();
+        if (action.startsWith("test")) settings.edit().putBoolean("armed", false).putBoolean("userPaused", true).putString("blocked", "").commit();
         else { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
         launchPending = true; update();
-        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.equals("test") ? "TEST_COOKIES" : "START_MISSING", 0); }
+        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.startsWith("test") ? "TEST_COOKIES" : "START_MISSING", 0); }
         catch (RuntimeException error) { settings.edit().putString("blocked", "SYSTEM_RESTRICTED").commit(); message("Foreground service could not start"); }
         handler.postDelayed(() -> { launchPending = false; update(); }, 1000);
     }
@@ -96,7 +97,7 @@ public final class MainActivity extends Activity {
         smallButton(controls, "Select Cookies", v -> { cookieInput.setText(""); cookieEditor.setVisibility(cookieEditor.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); if (cookieEditor.getVisibility() == View.VISIBLE) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); });
         smallButton(controls, "Test Cookies", v -> begin("test"));
         smallButton(controls, "Remove Cookies", v -> {
-            new CookieVault(this).remove(); SessionState.changed(this); cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); settings.edit().putString("state", "Cookies removed").apply(); log.log("COOKIE", "REMOVED", 0); update();
+            new CookieVault(this).remove(); ThumbApplication.clearBrowserSession(); SessionState.changed(this); cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); settings.edit().putString("state", "Cookies removed").apply(); log.log("COOKIE", "REMOVED", 0); update();
         });
         cookieEditor = new LinearLayout(this); cookieEditor.setOrientation(LinearLayout.VERTICAL); cookieEditor.setVisibility(View.GONE); layout.addView(cookieEditor);
         cookieInput = new EditText(this); cookieInput.setHint("Paste Netscape cookies or an HTTP Cookie header"); cookieInput.setHintTextColor(0xff777777); cookieInput.setTextColor(Color.WHITE); cookieInput.setMinLines(3); cookieInput.setMaxLines(6); cookieInput.setTextSize(13);

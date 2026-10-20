@@ -134,4 +134,29 @@ public class EngineTest {
         assertEquals("PROFILE_PAGE_UNAVAILABLE",prefs.getString("blocked",""));
     }
 
+    @Test public void singleProfileDiagnosticWritesOnePhotoButDoesNotUnlockBatch() throws Exception {
+        queue.replace(ImportTest.parse("[{\"items\":[{\"pageId\":\"one\"}]}]"));
+        int[] calls={0}; engine(provider(calls,200)).run("test_one",false);
+        assertEquals(3,calls[0]); assertFalse(SessionState.verified(prefs));
+        assertTrue(new OutputFolder(storage.context,storage.tree.toString()).valid("one.webp"));
+        assertTrue(prefs.getString("state","").contains("One profile photo verified"));
+    }
+    @Test public void fiveProfileDiagnosticDoesNotStopAfterThirdPhoto() throws Exception {
+        queue.replace(ImportTest.parse("[{\"items\":[{\"pageId\":\"one\"},{\"pageId\":\"two\"},{\"pageId\":\"three\"},{\"pageId\":\"four\"},{\"pageId\":\"five\"}]}]"));
+        int[] calls={0}; engine(provider(calls,200)).run("test",false);
+        assertEquals(11,calls[0]); assertEquals(5,prefs.getInt("verifiedProfiles",0));
+        assertEquals(Integer.valueOf(5),queue.counts().get("SUCCESS")); assertTrue(SessionState.verified(prefs));
+    }
+    @Test public void providerIsClosedEvenWhenAuthenticationBlocksQueue() {
+        boolean[] closed={false};
+        ProfileProvider fake=new ProfileProvider() {
+            @Override public void authenticate() throws Failure {throw new Failure("COOKIE_INVALID_EXPIRED",401,0,true);}
+            @Override public byte[] fetch(String user){throw new AssertionError("No profile access after login wall");}
+            @Override public void cancel(){}
+            @Override public void close(){closed[0]=true;}
+        };
+        new QueueEngine(storage.context,s->{},()->false,()->fake).run("test",false);
+        assertTrue(closed[0]); assertEquals("COOKIE_INVALID_EXPIRED",prefs.getString("blocked",""));
+    }
+
 }

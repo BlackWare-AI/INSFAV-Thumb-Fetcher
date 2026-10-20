@@ -1,29 +1,26 @@
-# Verification
+# Verification — WebView revision
 
-Run `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease` with JDK 17 and Android SDK 35. CI retains APK/mapping/test/lint reports. Automated cookies are synthetic TEST_* values. No live authenticated request occurs in tests.
+Run Node DOM-probe fixtures and JVM/native Android fixtures:
 
-## Automated coverage
+```sh
+node --test tools/profile-probe.test.cjs
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+```
 
-- Three JSON formats, 32 MiB cap, invalid/duplicate counts, order, Turkish locale, 1k/5k/10k synthetic imports and preserving valid data after rejection.
-- Netscape/HttpOnly and HTTP-header parsing; domain/path/expiry; ambiguity, input bounds and injection rejection.
-- AES-GCM roundtrip, ciphertext not plaintext, tamper failure and remove. A test AES key is injected; Android Keystore itself still needs a device.
-- Unknown homepage metadata versus real profile access; explicit homepage/profile login/challenge/HTTP errors still stop; missing output folder sends no request. Viewer attestation versus unrelated profiles; cookie headers only on permitted Instagram HTTPS requests, never image CDNs; login/redirect/404/403/429/network-loss fixtures.
-- Three independent fixture image downloads required for preflight; existing media cannot supply proof by itself. Unverified sessions cannot start batch. One scheduled execution makes at most one profile retrieval (cached files are checked in bounded groups). Valid cached outputs skip network.
-- Overnight/end-exclusive windows, next local start, delay bounds, invalid time inputs and the explicit arming/background/proof/pause/error predicates.
-- 429 saves Retry-After and pauses, no out-of-window network, Pause finishes an in-flight write without starting another account, and cookie changes invalidate proof/scheduling.
-- Native 128 × 128 WebP decode/crop/encode, broken/truncated data, SAF readback/skips, corrupt replacement, partial recovery, revoked permissions and unsupported rename.
-- Private SQLite persistence/retry eligibility and bounded redacted diagnostics.
+Node tests execute the actual asset in deterministic mocked DOMs. They cover exact account avatar acceptance, posts/navigation exclusion, similar names, stale canonical data, image readiness, structured identity, default avatars, trusted sources, ambiguity, login/challenge detection, routed errors and viewer identity. These are not real Chromium rendering/network tests.
 
-## Physical-device acceptance — outstanding
+Robolectric tests cover native snapshot validation, navigation/resource policy, subresource rate limiting, 404 classification, invalid callback results, one-profile preflight, all five profile attempts, provider closing on failure and existing JSON/codec/storage/queue/policy behaviors. Test sessions/images are synthetic; no cookies or personal backup are committed.
 
-1. Install the APK, select JSON containing at least three accessible accounts and choose a writable output parent.
-2. Paste cookies only into the app; Save Cookies. Verify the editor clears/hides and only Cookies Configured remains. Restart to check encrypted persistence. Never send cookies in chat/issues.
-3. Test Cookies. Verify the session and at least 3 of up to 5 profile downloads. Missing/changed HTML, login and challenges must fail. If it fails, export diagnostics; scheduling cannot repair an unavailable provider.
-4. Refresh the same folder in unchanged INSFAV and confirm each .thumbnails/username.webp maps to its account. Verify dimensions, WebP format and unchanged existing media/JSON.
-5. Test custom delays, same-day/overnight windows, finishing an in-flight operation at the boundary, no out-of-window requests and eligible next-window recovery.
-6. Test expired/revoked sessions, login/challenge, 429/Retry-After, unavailable/private profiles, missing URL, decode errors, lost grants and write errors. Verify distinct reasons and no secrets in logs.
-7. Test background processing on/off, Pause/Resume/Stop, process death, reboot/unlock, Doze, Android 15+ dataSync time limits and Android 16+ job quotas. Dispatch can be deferred/stopped.
-8. Measure 1k/5k/10k import, memory, UI and actual SAF performance on Android 8 and a current device. Target SDK 37 is not evidence of Android 17 device testing.
-9. Check signing certificate compatibility for updating old test APKs. If the old certificate is unavailable, reinstall needs private settings/queue re-import; external JSON/thumbnails remain intact.
+## Required physical-device order — not yet completed
 
-No production acceptance or live-provider success is claimed until these checks pass. Actual automated results belong in STATUS.md.
+1. Install 0.3.0 and confirm Android System WebView is available. Import a small JSON with one accessible account and choose a writable folder. Paste a fresh session only into the app.
+2. More → Test One Profile. Confirm the actual intended photo becomes a valid 128 × 128 WebP and the UI reports one successful verification. A generic icon, another account's photo, existing file alone or HTTP 200 is not success.
+3. Import five accessible accounts and use Test Cookies. Confirm all five actual photos and their account mapping. Record any early blocker and exported error code. Never report this gate as passed from fixtures.
+4. Open/refresh the folder in unchanged INSFAV and visually confirm mapping. Verify original JSON and existing files remain unchanged.
+5. Check slow JS/network, lazy avatar loading, private/restricted profiles, changed DOM, deleted/unavailable profiles, login, challenges, SSL failure, renderer death, HTTP 429/Retry-After and network loss. Posts must never be accepted as avatars.
+6. Measure memory across repeated accounts and confirm no view/window accumulation, console/credential disclosure or leftover active page work after Pause/Stop/timeout. Inspect browser cleanup after normal completion and abrupt process death; platform private-store secure erasure/encryption is not guaranteed.
+7. Validate background on/off, lock screen, scheduled overnight windows, Doze, process kill/restart, reboot, foreground service timeout/job quotas and storage grant loss. Invisible WebView continuity is not guaranteed by Android.
+8. Check encrypted vault persistence, fresh-cookie replacement, Remove Cookies and startup purging of any previous browser session. No secrets may appear in exported diagnostics.
+9. Test Android 8 and a current physical device. Measure 1k/5k/10k import and actual SAF/indexing performance; test APK signing/update compatibility.
+
+No device/emulator is connected to this development environment. Authenticated one/five-account Instagram downloads, renderer lifecycle under real background limits and real INSFAV rendering remain unverified. STATUS.md distinguishes completed CI checks from those outstanding gates.

@@ -1,6 +1,8 @@
 package com.insfav.thumbfetcher;
 
-interface ProfileProvider {
+interface ProfileProvider extends AutoCloseable {
+    default void authenticate() throws Failure { throw new Failure("COOKIE_AUTH_UNVERIFIED", 200, 0, true); }
+    @Override default void close() { }
     byte[] fetch(String username) throws Failure;
     void cancel();
     final class Failure extends Exception {

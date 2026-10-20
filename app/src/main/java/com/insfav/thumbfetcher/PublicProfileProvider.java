@@ -18,7 +18,7 @@ final class PublicProfileProvider implements ProfileProvider {
     PublicProfileProvider(CookieJar cookies) { this(url -> (HttpsURLConnection)url.openConnection(), cookies); }
     PublicProfileProvider(Connections connections) { this(connections, null); }
     PublicProfileProvider(Connections connections, CookieJar cookies) { this.connections = connections; this.cookies = cookies; }
-    void authenticate() throws Failure {
+    @Override public void authenticate() throws Failure {
         if (cookies == null || cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_REQUIRED");
         try {
             String page = new String(get(new URL("https://www.instagram.com/"), false, null), StandardCharsets.UTF_8);
@@ -92,6 +92,11 @@ final class PublicProfileProvider implements ProfileProvider {
         } catch (Failure failure) { throw failure; }
         catch (IOException error) { throw new Failure(cancelled ? "REQUEST_CANCELLED" : error instanceof UnknownHostException ? "DNS_ERROR" : error instanceof javax.net.ssl.SSLException ? "TLS_ERROR" : error instanceof java.net.SocketTimeoutException ? "NETWORK_TIMEOUT" : "NETWORK_ERROR"); }
     }
+    byte[] download(URL url) throws Failure {
+        try { return get(url, true, null); }
+        catch (Failure error) { throw error; }
+        catch (IOException error) { throw new Failure("DOWNLOAD_FAILED"); }
+    }
     private byte[] get(URL url, boolean image, String user) throws IOException, Failure {
         long deadline = System.nanoTime() + 45_000_000_000L;
         for (int redirect = 0; redirect <= 3; redirect++) {
@@ -105,13 +110,14 @@ final class PublicProfileProvider implements ProfileProvider {
             HttpsURLConnection connection = connections.open(url); active = connection;
             try {
                 connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.3");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.3.0");
                 if (!image && cookies != null) {
                     if (cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_EXPIRED", 0, 0, true);
                     connection.setRequestProperty("Cookie", cookies.header(url, System.currentTimeMillis()));
                 }
                 connection.setRequestProperty("Accept", image ? "image/webp,image/jpeg,image/png" : "text/html");
                 connection.setRequestProperty("Accept-Encoding", "identity");
+                if (image) connection.setRequestProperty("Referer", "https://www.instagram.com/");
                 int status = connection.getResponseCode();
                 if (cancelled) throw new Failure("REQUEST_CANCELLED");
                 if (System.nanoTime() > deadline) throw new Failure("REQUEST_TIMEOUT");

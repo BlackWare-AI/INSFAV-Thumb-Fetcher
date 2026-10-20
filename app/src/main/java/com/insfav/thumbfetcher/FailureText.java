@@ -12,6 +12,8 @@ final class FailureText {
         if (code.equals("PRIVATE_RESTRICTED") || code.equals("CHALLENGE_REQUIRED") || code.equals("ACCESS_BLOCKED")) return "Private / Restricted Profile";
         if (code.equals("RATE_LIMITED")) return "Rate Limited";
         if (code.equals("PROFILE_PAGE_UNAVAILABLE")) return "Instagram Returned an Error Page; Account Status Unknown";
+        if (code.startsWith("WEBVIEW_")) return "WebView Error / Unavailable";
+        if (code.equals("PROFILE_DEFAULT_AVATAR")) return "Default Avatar; No Real Profile Photo";
         if (code.startsWith("PROFILE_") || code.equals("INVALID_IMAGE_URL")) return "Profile Image URL Missing";
         if (code.startsWith("IMAGE_") || code.startsWith("WEBP_")) return "Image Decode Failed";
         if (code.startsWith("OUTPUT_") || code.startsWith("STORAGE_") || code.contains("RENAME") || code.contains("PARTIAL_")) return "Storage Error";
