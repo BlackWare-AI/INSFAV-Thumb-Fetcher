@@ -24,11 +24,16 @@ public final class PoolInstrumentation extends Instrumentation {
                 int effective = ConcurrencyPolicy.initial(c, requested);
                 WebViewProfileProvider p = new WebViewProfileProvider(c, CookieJar.parse("sessionid=TEST_SESSION; ds_user_id=123", System.currentTimeMillis()),
                     (view, url) -> {
-                        String user = url.substring("https://www.instagram.com/".length()).replace("/", "");
-                        String html = "<html><head><link rel='canonical' href='" + url + "'></head><body><main><header><img alt=\""+user+"'s profile picture\" src='https://fixture.cdninstagram.com/"+user+".png'></header></main></body></html>";
-                        view.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+                        view.loadUrl(url);
                         new Handler(Looper.getMainLooper()).postDelayed(() -> view.evaluateJavascript("JSON.stringify({href:location.href,ready:document.readyState,images:Array.from(document.images).map(i=>({alt:i.alt,src:i.currentSrc||i.src,loaded:i.complete,w:i.naturalWidth,h:i.naturalHeight}))})", value -> sendStatus(0,status("FIXTURE_DOM "+value))),1500);
-                    }, url -> new WebResourceResponse("image/png", null, new ByteArrayInputStream(png)));
+                    }, url -> {
+                        if (url.startsWith("https://www.instagram.com/")) {
+                            String user = url.substring("https://www.instagram.com/".length()).replace("/", "");
+                            String html = "<html><head><link rel='canonical' href='"+url+"'></head><body><main><header><img alt=\""+user+"'s profile picture\" src='https://fixture.cdninstagram.com/"+user+".png'></header></main></body></html>";
+                            return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(html.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                        }
+                        return new WebResourceResponse("image/png", null, new ByteArrayInputStream(png));
+                    });
                 ExecutorService workers = Executors.newFixedThreadPool(effective);
                 try {
                     for (int wave=0;wave<2;wave++) {
