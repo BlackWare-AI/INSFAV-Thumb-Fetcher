@@ -59,6 +59,19 @@ final class OutputFolder {
         catch (IOException error) { if ("OUTPUT_SIZE_REJECTED".equals(error.getMessage())) return false; throw error; }
     }
     void recover(String filename) throws IOException {
+        Uri backup = files.get(filename + ".bak");
+        if (backup != null) {
+            if (valid(filename)) {
+                if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
+            } else {
+                Uri bad = files.remove(filename);
+                if (bad != null && !DocumentsContract.deleteDocument(resolver, bad)) throw new IOException("OUTPUT_RESTORE_FAILED");
+                Uri restored = DocumentsContract.renameDocument(resolver, backup, filename);
+                if (restored == null) throw new IOException("OUTPUT_RESTORE_FAILED");
+                exactName(restored, filename); files.put(filename, restored);
+            }
+            files.remove(filename + ".bak");
+        }
         Uri partial = files.get(filename + ".part");
         if (partial != null) {
             if (!DocumentsContract.deleteDocument(resolver, partial)) throw new IOException("PARTIAL_CLEANUP_FAILED");
@@ -70,9 +83,19 @@ final class OutputFolder {
             if (c == null || !c.moveToFirst() || !name.equals(c.getString(0))) throw new IOException("OUTPUT_FILENAME_CHANGED");
         }
     }
-    boolean write(String filename, byte[] bytes) throws IOException {
+    byte[] thumbnail(String filename) throws IOException {
+        Uri file = files.get(filename); return file == null ? null : read(resolver.openInputStream(file));
+    }
+    boolean legacy(String filename) throws IOException {
+        if (!valid(filename)) return false;
+        byte[] bytes = thumbnail(filename);
+        android.graphics.BitmapFactory.Options b = new android.graphics.BitmapFactory.Options(); b.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, b); return b.outWidth == 128;
+    }
+    boolean write(String filename, byte[] bytes) throws IOException { return write(filename, bytes, false); }
+    boolean write(String filename, byte[] bytes, boolean refreshLegacy) throws IOException {
         if (!ThumbnailCodec.valid(bytes)) throw new IOException("OUTPUT_INVALID_WEBP");
-        if (valid(filename)) return false;
+        if (valid(filename) && !(refreshLegacy && legacy(filename))) return false;
         recover(filename);
         Uri pending = DocumentsContract.createDocument(resolver, folder, "application/octet-stream", filename + ".part");
         if (pending == null) throw new IOException("OUTPUT_CREATE_FAILED");
@@ -82,15 +105,34 @@ final class OutputFolder {
             if (output == null) throw new IOException("OUTPUT_WRITE_FAILED"); output.write(bytes); output.flush();
         }
         if (!ThumbnailCodec.valid(read(resolver.openInputStream(pending)))) throw new IOException("OUTPUT_READBACK_FAILED");
-        Uri old = files.get(filename);
-        if (old != null) { if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename); }
-        Uri committed;
-        try { committed = DocumentsContract.renameDocument(resolver, pending, filename); }
-        catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
-        if (committed == null) throw new IOException("ATOMIC_RENAME_UNSUPPORTED");
-        exactName(committed, filename);
-        files.remove(filename + ".part"); files.put(filename, committed);
-        if (!valid(filename)) throw new IOException("OUTPUT_FINAL_VERIFY_FAILED");
+        Uri old = files.get(filename), backup = null;
+        if (old != null) {
+            if (valid(filename)) {
+                // Keep a complete original until the replacement is committed and verified.
+                try { backup = DocumentsContract.renameDocument(resolver, old, filename + ".bak"); }
+                catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
+                if (backup == null) throw new IOException("OUTPUT_BACKUP_FAILED");
+                files.remove(filename); files.put(filename + ".bak", backup); exactName(backup, filename + ".bak");
+            } else {
+                if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename);
+            }
+        }
+        try {
+            Uri committed;
+            try { committed = DocumentsContract.renameDocument(resolver, pending, filename); }
+            catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
+            if (committed == null) throw new IOException("ATOMIC_RENAME_UNSUPPORTED");
+            files.remove(filename + ".part"); files.put(filename, committed); exactName(committed, filename);
+            if (!valid(filename)) throw new IOException("OUTPUT_FINAL_VERIFY_FAILED");
+        } catch (IOException | SecurityException error) {
+            // If access is still available, restore now. Otherwise next open recovers the backup.
+            if (backup != null) try { recover(filename); } catch (IOException | RuntimeException ignored) { }
+            throw error;
+        }
+        if (backup != null) {
+            if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
+            files.remove(filename + ".bak");
+        }
         return true;
     }
 }

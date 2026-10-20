@@ -1,13 +1,23 @@
-# Current INSFAV compatibility
+# Compatibility
 
-The current main application's ThumbnailPolicy normalizes a filename stem by trim, one leading @ removal and Locale.ROOT lowercase. It recognizes supported image extensions and matches that stem to imported usernames. This revision therefore writes exactly `.thumbnails/<normalized username>.webp`. It does not modify INSFAV or depend on the old draft hash-support PR.
+## Files
 
-Identity.outputFilename owns the new filename contract. The old Identity.filename SHA-256 utility is retained only for historical compatibility; no new hash-named output is generated. Normalization and the existing three-format JSON importer are preserved.
+Version 0.4.0 writes `.thumbnails/<normalized-username>.webp` at 256 × 256, WebP quality 78. Normalization trims, removes one leading @ and lowercases with Locale.ROOT. Filenames are not derived from display names. Valid old 128 × 128 WebP remains usable and is not changed unless the explicit legacy refresh operation is requested. The original JSON is never rewritten.
 
-OutputFolder accepts a selected parent or `.thumbnails` itself. It reuses the exact existing folder, validates 128 × 128 WebP bytes, skips good files, recovers recognized partials and stages verified writes before rename. It never deletes unrelated files or old `.thumnails` outputs. Selecting the old `.thumnails` child asks the user to select its parent rather than nesting the new folder inside it.
+Fixed 256 × 256 output may upscale a smaller source; it adds no real detail. The temporary source viewer never claims that encoded thumbnail dimensions are the source resolution.
 
-The private queue schema migration preserves accounts/order and resets terminal statuses to PENDING for revalidation under the new output contract. No source JSON or external thumbnail is rewritten by migration. Old valid `username.webp` files are read and skipped; old SHA files remain in place for manual retention. No automatic copying/migration of media is performed.
+## Main INSFAV source inspection
 
-Refresh the folder in INSFAV after downloading. If a username changes, its new filename differs. Existing successful files are never refreshed without an explicit future refresh feature; none is added here.
+Read-only inspection of BlackWare-AI/INSFAV `main`, commit `97f075d13839efed80fa2e7f698af35279f9da16`:
 
-Physical-device interoperability and live Instagram retrieval remain acceptance checks. Automated SAF/image fixtures and actual filename-policy comparisons cannot replace those checks.
+- `LocalImages.java` accepts the `.thumbnails` child of the selected parent and indexes username files.
+- `ImageCodec.bounds` accepts bounded JPEG/PNG/WebP dimensions, without requiring exactly 128 pixels. Therefore both 128 and 256 WebP inputs pass the same validation path.
+- `ImageCodec.render(..., false)` currently resamples list image data to 128 pixels. This does not reject 256-pixel source files, but the list transport does not retain all 256 pixels.
+- `web/style.css` keeps `.avatar` at 40 × 40 CSS pixels in the Android WebView. No style change is necessary for the helper output.
+- `ImageCodec.render(..., true)` handles bounded full-image decoding. The existing main viewer and its caption are not changed or verified on a device here.
+
+This is static compatibility evidence, not a demonstrated end-to-end main-app integration. Other development branches may differ. The helper's own source viewer shows actual decoded-source dimensions and labels any memory-sampled display. Future main-app integration should carry those dimensions as separate metadata rather than infer them from the thumbnail.
+
+## Reference
+
+Archived working helper tag `v0.2.2-working` remains at `a153102dd95243465144efc3ec74b5cb11186e09` (actual application version 0.3.0). Its runtime sources and original signed APK are unchanged.

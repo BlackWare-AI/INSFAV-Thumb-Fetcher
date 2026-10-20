@@ -9,13 +9,13 @@ function image(alt,src=PHOTO, options={}) {
         closest:selector=>selector==='article,nav,aside'?(options.post?{}:null):(options.header===false?null:{}),
         ...options};
 }
-function probe({images=[],data=[],path='/example/',canonical='https://www.instagram.com/example/',forms=[],createdLoaded=true}={}) {
+function probe({images=[],data=[],path='/example/',canonical='https://www.instagram.com/example/',forms=[],createdLoaded=true,high=false}={}) {
     const context={URL, location:{href:'https://www.instagram.com'+path,pathname:path},
         document:{images,scripts:data.map(x=>({textContent:typeof x==='string'?x:JSON.stringify(x)})),
             querySelector:()=>canonical?{href:canonical}:null,querySelectorAll:()=>forms},
         Image:class {constructor(){this.complete=createdLoaded;this.naturalWidth=createdLoaded?320:0;this.naturalHeight=createdLoaded?320:0;}},
         window:{}};
-    return JSON.parse(vm.runInNewContext('('+source+')("example","123")',context));
+    return JSON.parse(vm.runInNewContext('('+source+')("example","123",'+high+')',context));
 }
 test('loaded profile header avatar is accepted with its exact discovered URL',()=>{
     const x=probe({images:[image("example's profile picture")]});
@@ -64,4 +64,18 @@ test('viewer proof must match server-returned ds_user_id',()=>{
     assert.equal(probe({data:[{viewerId:'123'}]}).authenticated,true);
     assert.equal(probe({data:[{viewerId:'321'}]}).authenticated,false);
     assert.equal(probe({data:[{current_user:{username:'viewer',id:'123'}}]}).authenticated,true);
+});
+
+test('HD mode prefers an explicitly bound HD field over a smaller header photo',()=>{
+    const hd=PHOTO+'?hd=1';
+    const options={images:[image("example's profile picture")],data:[{username:'example',id:'4',profile_pic_url:PHOTO,profile_pic_url_hd:hd}]};
+    assert.equal(probe(options).url,PHOTO);
+    assert.equal(probe({...options,high:true}).url,hd);
+    assert.equal(probe({...options,high:true,createdLoaded:false}).url,undefined);
+});
+test('HD mode only uses a larger source explicitly offered on the same bound avatar',()=>{
+    const hd=PHOTO+'?offered=1';
+    const avatar=image("example's profile picture",PHOTO,{getAttribute:key=>key==='alt'?"example's profile picture":key==='srcset'?PHOTO+' 320w, '+hd+' 1080w':null});
+    assert.equal(probe({images:[avatar],high:true}).url,hd);
+    assert.equal(probe({images:[image("other's profile picture")],high:true}).url,undefined);
 });

@@ -24,9 +24,13 @@ public final class MainActivity extends Activity {
     private TextView stats, status, jsonLabel, folderLabel;
     private ProgressBar progress;
     private TextView cookieStatus;
-    private EditText cookieInput, minimum, maximum, startTime, endTime;
+    private EditText cookieInput, minimum, maximum, startTime, endTime, concurrentViews;
     private LinearLayout cookieEditor;
     private Switch background;
+    private ImageView preview;
+    private TextView previewLabel;
+    private String shownPreview = "";
+    private PhotoViewer viewer;
     private final java.util.List<View> configurationViews = new ArrayList<>();
     private Button selectJson, selectFolder, start, pause, stop;
     private static volatile boolean busy, launchPending;
@@ -37,7 +41,7 @@ public final class MainActivity extends Activity {
         LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(dp(20), dp(16), dp(20), dp(20)); scroll.addView(layout);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> { view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets.consumeSystemWindowInsets(); });
         TextView title = text("INSFAV\nThumb Fetcher", 26, Color.WHITE); layout.addView(title);
-        TextView subtitle = text("128 × 128 WebP · Local JSON · Private cookies", 13, 0xff999999); layout.addView(subtitle);
+        TextView subtitle = text("256 × 256 WebP · Local JSON · Private cookies", 13, 0xff999999); layout.addView(subtitle);
         selectJson = button(layout, "Select JSON", view -> picker(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE), 10));
         jsonLabel = text("No JSON selected", 13, 0xff999999); layout.addView(jsonLabel);
         selectFolder = button(layout, "Select Output Folder", view -> picker(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), 11));
@@ -47,6 +51,10 @@ public final class MainActivity extends Activity {
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); progress.setMax(100); layout.addView(progress, new LinearLayout.LayoutParams(-1, dp(18)));
         stats = text("", 16, Color.WHITE); stats.setPadding(0, dp(14), 0, dp(14)); layout.addView(stats);
         status = text("Idle", 14, 0xffaaaaaa); layout.addView(status);
+        LinearLayout photo = row(layout);
+        preview = new ImageView(this); preview.setContentDescription("Open profile photo"); photo.addView(preview, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        previewLabel = text("Tap a thumbnail to view its source photo", 13, 0xffaaaaaa); photo.addView(previewLabel);
+        preview.setOnClickListener(v -> openPhoto(settings.getString("previewUser", "")));
         start = button(layout, "Start Missing", view -> begin("missing"));
         pause = button(layout, "Pause / Resume", view -> {
             if (QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true) && settings.getString("blocked", "").isEmpty())) { QueueControl.pause(this, false); status.setText("Pausing after the current request…"); }
@@ -55,7 +63,13 @@ public final class MainActivity extends Activity {
         stop = button(layout, "Stop", view -> QueueControl.pause(this, true));
         button(layout, "More", view -> {
             PopupMenu menu = new PopupMenu(this, view);
-            menu.getMenu().add("Test One Profile").setOnMenuItemClickListener(item -> { begin("test_one"); return true; });
+            menu.getMenu().add("Refresh 128 × 128 Thumbnails").setOnMenuItemClickListener(item -> {
+                new AlertDialog.Builder(this).setMessage("Download fresh source photos for existing 128 × 128 thumbnails? Other valid thumbnails are preserved.").setPositiveButton("Refresh", (d, which) -> begin("refresh_legacy")).setNegativeButton("Cancel", null).show(); return true;
+            });
+            menu.getMenu().add("Open Profile Photo").setOnMenuItemClickListener(item -> {
+                EditText user = new EditText(this); user.setSingleLine(true); user.setHint("Imported username");
+                new AlertDialog.Builder(this).setTitle("Open Profile Photo").setView(user).setPositiveButton("Open", (d, which) -> openPhoto(Identity.normalize(user.getText().toString()))).setNegativeButton("Cancel", null).show(); return true;
+            });
             menu.getMenu().add("Retry Failed").setOnMenuItemClickListener(item -> { begin("failed"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
             menu.show();
@@ -75,13 +89,11 @@ public final class MainActivity extends Activity {
         if (busy || QueueControl.lock.get() || launchPending) return;
         if (!new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
         if (!saveSchedule()) return;
-        if (!action.startsWith("test") && !SessionState.verified(settings)) { message("Use Test Cookies to verify access to 3 profile photos first"); return; }
-        if (!action.startsWith("test") && (settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
+        if ((settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
         WorkScheduler.cancel(this);
-        if (action.startsWith("test")) settings.edit().putBoolean("armed", false).putBoolean("userPaused", true).putString("blocked", "").commit();
-        else { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
+        { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
         launchPending = true; update();
-        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.startsWith("test") ? "TEST_COOKIES" : "START_MISSING", 0); }
+        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : "START_MISSING", 0); }
         catch (RuntimeException error) { settings.edit().putString("blocked", "SYSTEM_RESTRICTED").commit(); message("Foreground service could not start"); }
         handler.postDelayed(() -> { launchPending = false; update(); }, 1000);
     }
@@ -95,7 +107,6 @@ public final class MainActivity extends Activity {
         cookieStatus = text("Cookies Not Configured", 13, 0xffaaaaaa); cookieStatus.setPadding(0, dp(14), 0, 0); layout.addView(cookieStatus);
         LinearLayout controls = row(layout);
         smallButton(controls, "Select Cookies", v -> { cookieInput.setText(""); cookieEditor.setVisibility(cookieEditor.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); if (cookieEditor.getVisibility() == View.VISIBLE) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); });
-        smallButton(controls, "Test Cookies", v -> begin("test"));
         smallButton(controls, "Remove Cookies", v -> {
             new CookieVault(this).remove(); ThumbApplication.clearBrowserSession(); SessionState.changed(this); cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); settings.edit().putString("state", "Cookies removed").apply(); log.log("COOKIE", "REMOVED", 0); update();
         });
@@ -121,7 +132,7 @@ public final class MainActivity extends Activity {
             catch (ProfileProvider.Failure e) { error = "Cookie Invalid / Expired (" + e.code + ")"; log.log("COOKIE", e.code, 0); }
             catch (Exception e) { error = "Cookie encryption/storage failed; previous cookies preserved"; log.log("COOKIE", "ENCRYPTION_FAILED", 0); }
             String result = error;
-            handler.post(() -> { busy = false; cookieInput.setText(""); if (result == null) { cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); message("Cookies Configured. Use Test Cookies next."); } else message(result); update(); });
+            handler.post(() -> { busy = false; cookieInput.setText(""); if (result == null) { cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); message("Cookies Configured. Ready for Start Missing."); } else message(result); update(); });
         });
     }
     private EditText field(LinearLayout parent, String label, String initial, boolean clock) {
@@ -130,6 +141,7 @@ public final class MainActivity extends Activity {
     }
     private void addScheduleControls(LinearLayout layout) {
         LinearLayout delay = row(layout); minimum = field(delay, "Minimum Delay (sec)", String.valueOf(settings.getInt("minimum", 15)), false); maximum = field(delay, "Maximum Delay (sec)", String.valueOf(settings.getInt("maximum", 30)), false);
+        concurrentViews = field(row(layout), "Concurrent WebViews (1–30)", String.valueOf(settings.getInt("concurrentWebViews", 1)), false);
         LinearLayout hours = row(layout); startTime = field(hours, "Start Time (HH:mm)", RunPolicy.time(settings.getInt("startMinute", 120)), true); endTime = field(hours, "End Time (HH:mm)", RunPolicy.time(settings.getInt("endMinute", 420)), true);
         background = new Switch(this); background.setText("Background Processing"); background.setTextColor(Color.WHITE); background.setChecked(settings.getBoolean("background", false)); layout.addView(background); configurationViews.add(background);
         Button save = button(layout, "Save Settings", v -> { if (saveSchedule()) { WorkScheduler.cancel(this); WorkScheduler.recovery(this); WorkScheduler.plan(this, false); message("Settings saved. Android may defer scheduled work."); } }); configurationViews.add(save);
@@ -137,8 +149,9 @@ public final class MainActivity extends Activity {
     private boolean saveSchedule() {
         try {
             RunPolicy p = new RunPolicy(Integer.parseInt(minimum.getText().toString()), Integer.parseInt(maximum.getText().toString()), RunPolicy.minute(startTime.getText().toString()), RunPolicy.minute(endTime.getText().toString()));
-            settings.edit().putInt("minimum", p.minimum).putInt("maximum", p.maximum).putInt("startMinute", p.start).putInt("endMinute", p.end).putBoolean("background", background.isChecked()).commit(); return true;
-        } catch (IllegalArgumentException e) { message("Use 1–86400 seconds, maximum ≥ minimum, and different HH:mm start/end times"); return false; }
+            int concurrency = ConcurrencyPolicy.validate(Integer.parseInt(concurrentViews.getText().toString()));
+            settings.edit().putInt("concurrentWebViews", concurrency).putInt("minimum", p.minimum).putInt("maximum", p.maximum).putInt("startMinute", p.start).putInt("endMinute", p.end).putBoolean("background", background.isChecked()).commit(); return true;
+        } catch (IllegalArgumentException e) { message("Use 1–30 WebViews, 1–86400 seconds, maximum ≥ minimum, and different HH:mm start/end times"); return false; }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data); if (result != RESULT_OK || data == null || data.getData() == null) return;
@@ -176,6 +189,10 @@ public final class MainActivity extends Activity {
             catch (Exception error) { handler.post(() -> message("Diagnostics export failed")); }
         });
     }
+    private void openPhoto(String user) {
+        if (!Identity.valid(user) || !queue.users(false).contains(user)) { message("Select an imported account with a local thumbnail"); return; }
+        if (viewer != null) viewer.close(); viewer = new PhotoViewer(this, user); viewer.show();
+    }
     private void message(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
     private void update() {
         if (stats == null) return;
@@ -183,16 +200,26 @@ public final class MainActivity extends Activity {
         int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0), remaining = counts.getOrDefault("PENDING", 0);
         int percent = total == 0 ? 0 : (total - remaining) * 100 / total;
         stats.setText(String.format(Locale.ROOT, "Total unique accounts: %,d\nExisting valid thumbnails: %,d\nSuccessfully downloaded: %,d\nFailed: %,d\nSkipped (unavailable): %,d\nRemaining: %,d\nProgress: %d%%", total, existing, success, failed, skipped, remaining, percent));
+        stats.append("\nCompleted: " + (existing + success) + "\nActive WebViews: " + QueueControl.activeViews + " / " + QueueControl.effectiveViews + "\nConcurrent WebViews: " + settings.getInt("concurrentWebViews", 1));
         progress.setProgress(percent);
+        String previewUser = settings.getString("previewUser", "");
+        if (!previewUser.equals(shownPreview)) {
+            shownPreview = previewUser;
+            io.execute(() -> {
+                try {
+                    byte[] bytes = new OutputFolder(this, settings.getString("tree", "")).thumbnail(Identity.outputFilename(previewUser));
+                    android.graphics.Bitmap bitmap = bytes != null && ThumbnailCodec.valid(bytes) ? android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length) : null;
+                    handler.post(() -> { if (!isDestroyed()) { preview.setImageBitmap(bitmap); previewLabel.setText(previewUser); } else if (bitmap != null) bitmap.recycle(); });
+                } catch (Exception ignored) { }
+            });
+        }
         String detail = busy ? "Preparing…" : settings.getString("state", "Idle");
         if (QueueControl.lock.get()) { detail += "\nCurrent: " + QueueControl.current; if (QueueControl.etaSeconds >= 0) detail += "\nEstimated remaining: " + QueueControl.etaSeconds / 60 + " min"; }
         else if (detail.equals("Downloading") || detail.equals("Waiting") || detail.equals("Writing thumbnail") || detail.equals("Checking existing thumbnails")) detail = "Interrupted; tap Resume to continue";
         StringBuilder failureSummary = new StringBuilder();
         for (Map.Entry<String, Integer> failure : queue.failures().entrySet()) failureSummary.append("\n").append(FailureText.label(failure.getKey())).append(": ").append(failure.getValue()).append(" (").append(failure.getKey()).append(")");
         status.setText(detail + failureSummary);
-        String evidence = SessionState.evidence(settings);
-        String sessionLabel = evidence.equals("VERIFIED") ? "Session verified" : evidence.equals("UNVERIFIED") ? "Session identity unverified" : evidence.equals("INVALID") ? "Session invalid / expired" : "Session not tested";
-        cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured · " + sessionLabel + "\nProfile photos verified: " + settings.getInt("verifiedProfiles", 0) + " (3 required)" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
+        cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;
         selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get() || settings.getBoolean("armed", false));
@@ -207,5 +234,5 @@ public final class MainActivity extends Activity {
         if (!settings.getBoolean("background", false) && QueueControl.lock.get()) QueueControl.pause(this, false);
         super.onStop();
     }
-    @Override protected void onDestroy() { io.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (viewer != null) viewer.close(); io.shutdown(); super.onDestroy(); }
 }

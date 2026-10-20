@@ -5,7 +5,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 final class QueueControl {
     static final AtomicBoolean lock = new AtomicBoolean();
-    static volatile boolean requested;
+    static volatile boolean requested, memoryPressure;
+    static volatile int activeViews, effectiveViews = 1;
     static volatile String requestedState = "Paused", current = "", phase = "Idle";
     static volatile long etaSeconds = -1;
     static void pause(Context context, boolean stop) {

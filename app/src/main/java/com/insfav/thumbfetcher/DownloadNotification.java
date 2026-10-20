@@ -15,7 +15,7 @@ final class DownloadNotification {
         PendingIntent pause = PendingIntent.getBroadcast(c, 1, new Intent(c, QueueControlReceiver.class).setAction("pause"), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getBroadcast(c, 2, new Intent(c, QueueControlReceiver.class).setAction("stop"), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         String counts = String.format(Locale.ROOT, "Downloaded %d · Existing %d · Missing %d · Failed %d · Skipped %d", success, existing, remaining, failed, skipped);
-        return new Notification.Builder(c, "downloads").setSmallIcon(R.drawable.ic_fetch).setContentTitle("INSFAV Thumb Fetcher").setContentText(phase).setStyle(new Notification.BigTextStyle().bigText(phase + "\n" + counts)).setSubText(counts).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(true)
+        return new Notification.Builder(c, "downloads").setSmallIcon(R.drawable.ic_fetch).setContentTitle("INSFAV Thumb Fetcher").setContentText(phase).setStyle(new Notification.BigTextStyle().bigText(phase + "\n" + counts + "\nActive WebViews " + QueueControl.activeViews + " / " + QueueControl.effectiveViews)).setSubText(counts).setContentIntent(open).setOnlyAlertOnce(true).setOngoing(true)
             .addAction(new Notification.Action.Builder(null, "Pause", pause).build()).addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
     }
 }

@@ -1,4 +1,4 @@
-function (expected, expectedId) {
+function (expected, expectedId, preferHigh) {
     "use strict";
     const result = {page: location.href, username: expected};
     const wall = code => JSON.stringify(Object.assign(result, {wall: code}));
@@ -71,7 +71,9 @@ function (expected, expectedId) {
         if (bound && img.closest("header,main") && safe(img.currentSrc || img.src)) candidates.set(img.currentSrc || img.src, img);
     }
     let url = "", kind = "", img;
-    if (candidates.size === 1) {
+    if (preferHigh && structured.size === 1) {
+        url = Array.from(structured)[0]; kind = "profile_json";
+    } else if (candidates.size === 1) {
         [url, img] = candidates.entries().next().value;
         kind = "profile_header";
     } else if (candidates.size > 1) return wall("PROFILE_DATA_AMBIGUOUS");
@@ -86,6 +88,22 @@ function (expected, expectedId) {
             }
             img = window.__insfavImage;
         }
+    }
+    if (preferHigh && kind === "profile_header" && img) {
+        let best = img.naturalWidth || 0;
+        for (const item of (img.getAttribute("srcset") || "").split(",")) {
+            const parts = item.trim().split(/\s+/);
+            if (parts.length === 2 && /^\d+w$/.test(parts[1]) && safe(parts[0]) && parseInt(parts[1], 10) > best) {
+                best = parseInt(parts[1], 10); url = parts[0];
+            }
+        }
+    }
+    if (url && (!img || (img.currentSrc || img.src) !== url)) {
+        if (!safe(url)) return wall("UNTRUSTED_SOURCE");
+        if (!window.__insfavImage || window.__insfavImage.src !== url) {
+            window.__insfavImage = new Image(); window.__insfavImage.src = url;
+        }
+        img = window.__insfavImage;
     }
     if (!url || !img || !img.complete || img.naturalWidth < 32 || img.naturalHeight < 32) return JSON.stringify(result);
     return JSON.stringify(Object.assign(result, {url, kind, loaded: true, width: img.naturalWidth, height: img.naturalHeight}));
