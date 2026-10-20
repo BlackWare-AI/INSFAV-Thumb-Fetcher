@@ -19,7 +19,7 @@ final class WebViewProfileProvider implements ProfileProvider {
     interface Resources { WebResourceResponse intercept(String url); }
     private final Pages pages;
     private final Resources resources;
-    int createdCount, reusedCount;
+    int createdCount, reusedCount, activeCount;
     private final Context context;
     private final CookieJar cookies;
     private static final Semaphore SESSION_LEASE = new Semaphore(1, true);
@@ -155,7 +155,7 @@ final class WebViewProfileProvider implements ProfileProvider {
         final Object token = new Object();
         volatile Failure failure; volatile JSONObject result;
         WebView view;
-        volatile boolean finishing; boolean completed, started, broken;
+        volatile boolean finishing; boolean completed, started, broken, counted;
         final java.util.concurrent.atomic.AtomicInteger resourceCount = new java.util.concurrent.atomic.AtomicInteger();
         long deadline;
         Operation(String user, String expectedId, boolean highResolution) { this.user = user; this.expectedId = expectedId; this.highResolution = highResolution; }
@@ -173,6 +173,7 @@ final class WebViewProfileProvider implements ProfileProvider {
                     if (views.size() >= ceiling) { fail(new Failure("WEBVIEW_POOL_CAPACITY")); return; }
                     view = new WebView(context); views.add(view); createdCount++; log.log("POOL", "VIEW_CREATED", views.size());
                 } else { reusedCount++; log.log("POOL", "VIEW_REUSED", views.size()); }
+                counted = true; QueueControl.activeViews = ++activeCount;
                 view.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 view.setSaveEnabled(false);
                 // Provide a viewport without attaching a window or showing browser content.
@@ -324,7 +325,7 @@ final class WebViewProfileProvider implements ProfileProvider {
         }
         void complete() {
             if (completed) return;
-            completed = true; main.removeCallbacksAndMessages(token); log.log("WEBVIEW", "CLEANED", 0); done.countDown();
+            completed = true; if (counted) { counted = false; QueueControl.activeViews = Math.max(0, --activeCount); } main.removeCallbacksAndMessages(token); log.log("WEBVIEW", "CLEANED", 0); done.countDown();
         }
     }
 }

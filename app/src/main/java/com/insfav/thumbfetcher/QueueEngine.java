@@ -80,7 +80,7 @@ final class QueueEngine {
                     }
                     if (System.currentTimeMillis() >= next) {
                         index++; launches++; inFlight.add(user);
-                        QueueControl.current = user; QueueControl.activeViews = inFlight.size();
+                        QueueControl.current = user;
                         // Reserve before dispatch: delay controls profile starts across ALL workers.
                         settings.edit().putLong("nextRequestAt", System.currentTimeMillis() + policy.delayMillis()).commit();
                         state("Downloading");
@@ -100,7 +100,6 @@ final class QueueEngine {
                 if (ready == null) continue;
                 Result result = ready.get();
                 if (!inFlight.remove(result.user)) continue; // A result is committed once by this coordinator.
-                QueueControl.activeViews = inFlight.size();
                 if (result.failure == null) {
                     boolean wrote = output.write(Identity.outputFilename(result.user), result.bytes, refreshLegacy);
                     result.bytes = null;
