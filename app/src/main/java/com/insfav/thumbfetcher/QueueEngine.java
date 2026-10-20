@@ -25,6 +25,10 @@ final class QueueEngine {
     private boolean interrupted() { return cancelled || stopped.getAsBoolean() || QueueControl.requested || Thread.currentThread().isInterrupted(); }
     private void state(String state) { QueueControl.phase = state; settings.edit().putString("state", state).apply(); reporter.update(state); }
     private void block(String code) { SharedPreferences.Editor edit = settings.edit().putString("blocked", code); if (code.startsWith("COOKIE_")) edit.putString("verifiedGeneration", "").putInt("verifiedProfiles", 0); edit.commit(); state("Paused: " + FailureText.label(code) + " (" + code + ")"); }
+    private void singleState(QueueStore queue) {
+        if (queue.pending().isEmpty()) { settings.edit().putBoolean("armed", false).commit(); state("Completed"); }
+        else state("Waiting for next scheduled profile");
+    }
     void run(String action, boolean single) {
         Diagnostics log = new Diagnostics(context); String generation = settings.getString("cookieGeneration", "");
         boolean preflight = "test".equals(action); int verified = 0, consecutive = 0, attempts = 0, cached = 0; long totalMillis = 0;
@@ -46,7 +50,7 @@ final class QueueEngine {
                 if (!generation.equals(settings.getString("cookieGeneration", ""))) { block("COOKIE_CHANGED"); return; }
                 if (!preflight && !policy.contains(ZonedDateTime.now())) { state("Waiting for working hours"); return; }
                 String filename = Identity.outputFilename(user); output.recover(filename);
-                if (!preflight && output.valid(filename)) { queue.mark(user, "EXISTING", "VALID_WEBP"); state("Checking existing thumbnails"); if (single && ++cached >= 128) return; continue; }
+                if (!preflight && output.valid(filename)) { queue.mark(user, "EXISTING", "VALID_WEBP"); state("Checking existing thumbnails"); if (single && ++cached >= 128) { singleState(queue); return; } continue; }
                 long wait = Math.max(settings.getLong("nextRequestAt", 0), settings.getLong("retryAt", 0));
                 if (single && System.currentTimeMillis() < wait) { state("Waiting for next permitted request"); return; }
                 state("Waiting");
@@ -76,7 +80,7 @@ final class QueueEngine {
                 attempts++; totalMillis += android.os.SystemClock.elapsedRealtime() - started;
                 QueueControl.etaSeconds = attempts >= 3 ? (targets.size() - index - 1L) * (totalMillis / attempts + (policy.minimum + policy.maximum) * 500L) / 1000 : -1;
                 if (preflight && verified >= 3) { SessionState.verified(context, generation, verified); state("Cookies Valid · 3 profiles verified. Ready for Start Missing."); log.log("COOKIE", "PREFLIGHT_VERIFIED", verified); return; }
-                if (single) { state("Waiting for next scheduled profile"); return; }
+                if (single) { singleState(queue); return; }
             }
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);
             else if (preflight) { block("COOKIE_PREFLIGHT_INCOMPLETE"); log.log("COOKIE", "PREFLIGHT_INCOMPLETE", verified); }

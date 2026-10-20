@@ -2,6 +2,10 @@ package com.insfav.thumbfetcher;
 
 final class FailureText {
     static String label(String code) {
+        if (code.equals("COOKIE_PREFLIGHT_INCOMPLETE")) return "Profile Verification Incomplete";
+        if (code.equals("COOKIE_PREFLIGHT_REQUIRED") || code.equals("COOKIE_CHANGED")) return "Cookie Test Required";
+        if (code.equals("COOKIE_REQUIRED")) return "Cookies Not Configured";
+        if (code.equals("COOKIE_DECRYPT_FAILED")) return "Cookie Storage Unavailable";
         if (code.startsWith("COOKIE_")) return code.equals("COOKIE_AUTH_UNVERIFIED") ? "Cookie Session Unverified" : "Cookie Invalid / Expired";
         if (code.startsWith("LOGIN_")) return "Login Required";
         if (code.equals("PROFILE_NOT_FOUND_OR_UNAVAILABLE")) return "Profile Not Found / Unavailable";
