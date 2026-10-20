@@ -24,7 +24,7 @@ final class PublicProfileProvider implements ProfileProvider {
             String page = new String(get(new URL("https://www.instagram.com/"), false, null), StandardCharsets.UTF_8);
             rejectWall(page, true);
             String expectedId = cookies.value("ds_user_id", System.currentTimeMillis());
-            if (!authenticated(page, expectedId)) throw new Failure("COOKIE_AUTH_UNVERIFIED");
+            if (!authenticated(page, expectedId)) throw new Failure("COOKIE_AUTH_UNVERIFIED", 200, 0, true);
         } catch (Failure error) { throw error; }
         catch (IOException error) { throw new Failure("NETWORK_ERROR"); }
     }
@@ -60,9 +60,9 @@ final class PublicProfileProvider implements ProfileProvider {
         return value;
     }
     private static void rejectWall(String html, boolean configured) throws Failure {
-        String lower = html.toLowerCase(Locale.ROOT);
-        if (lower.contains("/challenge/") || lower.contains("captcha") || lower.contains("\"checkpoint_required\":true")) throw new Failure("CHALLENGE_REQUIRED", 200, 0, true);
-        if (lower.contains("loginform") || lower.contains("log in to instagram") || lower.contains("\"login_required\":true")) throw new Failure(configured ? "COOKIE_INVALID_EXPIRED" : "LOGIN_REQUIRED", 200, 0, true);
+        String wall = AccessWall.detect(html);
+        if (wall.equals("CHALLENGE_REQUIRED")) throw new Failure(wall, 200, 0, true);
+        if (wall.equals("LOGIN_REQUIRED")) throw new Failure(configured ? "COOKIE_INVALID_EXPIRED" : wall, 200, 0, true);
     }
     private volatile HttpsURLConnection active;
     private volatile boolean cancelled;
@@ -105,7 +105,7 @@ final class PublicProfileProvider implements ProfileProvider {
             HttpsURLConnection connection = connections.open(url); active = connection;
             try {
                 connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.1");
                 if (!image && cookies != null) {
                     if (cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_EXPIRED", 0, 0, true);
                     connection.setRequestProperty("Cookie", cookies.header(url, System.currentTimeMillis()));
@@ -151,9 +151,7 @@ final class PublicProfileProvider implements ProfileProvider {
         }
         if (found.isEmpty() && restricted[0]) throw new Failure("PRIVATE_RESTRICTED", 200, 0, false);
         if (found.size() != 1) {
-            String lower = html.toLowerCase(Locale.ROOT);
-            if (lower.contains("/challenge/") || lower.contains("captcha")) throw new Failure("CHALLENGE_REQUIRED", 200, 0, true);
-            if (lower.contains("loginform") || lower.contains("log in to instagram")) throw new Failure("LOGIN_REQUIRED", 200, 0, true);
+            rejectWall(html, false);
             throw new Failure(found.isEmpty() ? "PROFILE_IMAGE_URL_MISSING" : "PROFILE_DATA_AMBIGUOUS", 200, 0, false);
         }
         try { URL url = new URL(found.iterator().next()); if (!trusted(url, true)) throw new Failure("UNTRUSTED_SOURCE"); return url; }

@@ -1,3 +1,15 @@
+# 0.2.1 — access-wall classification fix
+
+The 0.2.0 classifier could mark an HTTP 200 page as CHALLENGE_REQUIRED solely because its script bundles contained the word captcha, a /challenge/ string, or login UI text. Those strings do not establish an active access wall.
+
+0.2.1 checks explicit structured server error flags and challenge/login forms. Actual challenge redirects and HTTP 401/403/429 still stop or pause work. Removing a false wall does not attest a session: unsupported viewer metadata remains COOKIE_AUTH_UNVERIFIED (HTTP 200), and missing profile metadata remains PROFILE_IMAGE_URL_MISSING. The three-profile download gate remains enforced.
+
+Regression tests cover bundled module names, navigation links, authenticated viewer metadata, discovered-image transport, explicit challenge/login flags and forms, and fail-closed behavior when authentication/photo evidence is absent. No user cookies, response bodies, personal diagnostics or account identifiers are included in source or fixtures. The shared session is not reused for this change.
+
+Build/test verification is pending CI. Live profile downloads and physical-device scheduling remain unverified. The 0.2.0 results below are historical baseline measurements; they do not describe the new APK's size or signing certificate.
+
+---
+
 # INSFAV Thumb Fetcher — 0.2.0 technical status
 
 Date: 2026-10-20
