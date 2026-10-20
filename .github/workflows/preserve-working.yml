@@ -2,7 +2,7 @@ name: Preserve working WebView build
 on:
   push:
     branches: [cookie-background]
-    paths: [.github/workflows/preserve-working.yml]
+    paths: [.github/workflows/preserve-working.yml, tools/launch-smoke.sh]
   workflow_dispatch:
 permissions:
   contents: write
