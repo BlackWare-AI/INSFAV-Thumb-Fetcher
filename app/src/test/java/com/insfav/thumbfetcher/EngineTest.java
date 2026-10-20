@@ -46,7 +46,7 @@ public class EngineTest {
         assertEquals(256,bitmap.getWidth()); bitmap.recycle(); assertFalse(SessionState.verified(prefs));
     }
     @Test public void allAccountLocalFailuresAreSkippedAndLaterAccountStillDownloads() {
-        String[] codes={"PROFILE_NOT_FOUND_OR_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE","PROFILE_IMAGE_URL_MISSING","WEBVIEW_TIMEOUT","WEBVIEW_NETWORK_ERROR","PROFILE_DEFAULT_AVATAR","HTTP_ERROR"};
+        String[] codes={"PROFILE_NOT_FOUND_OR_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE","PROFILE_IMAGE_URL_MISSING","WEBVIEW_TIMEOUT","WEBVIEW_NETWORK_ERROR","WEBVIEW_NAVIGATION_BLOCKED","PROFILE_DEFAULT_AVATAR","HTTP_ERROR"};
         accounts(codes.length+1);
         engine(fake(user -> { int i=Integer.parseInt(user.substring(10)); if(i<codes.length)throw new ProfileProvider.Failure(codes[i],200,0,true); return pixels; })).run("missing",false);
         assertEquals(Integer.valueOf(codes.length),queue.counts().get("SKIPPED")); assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
