@@ -24,21 +24,29 @@ final class QueueEngine {
     void cancel() { cancelled = true; PublicProfileProvider current = provider; if (current != null) current.cancel(); }
     private boolean interrupted() { return cancelled || stopped.getAsBoolean() || QueueControl.requested || Thread.currentThread().isInterrupted(); }
     private void state(String state) { QueueControl.phase = state; settings.edit().putString("state", state).apply(); reporter.update(state); }
-    private void block(String code) { SharedPreferences.Editor edit = settings.edit().putString("blocked", code); if (code.startsWith("COOKIE_")) edit.putString("verifiedGeneration", "").putInt("verifiedProfiles", 0); edit.commit(); state("Paused: " + FailureText.label(code) + " (" + code + ")"); }
+    private void block(String code) { SharedPreferences.Editor edit = settings.edit().putString("blocked", code); if (code.startsWith("COOKIE_")) edit.putString("verifiedGeneration", "").putInt("verifiedProfiles", 0); if (code.equals("COOKIE_INVALID_EXPIRED") || code.equals("COOKIE_EXPIRED") || code.equals("COOKIE_INVALID")) edit.putString("sessionEvidence", "INVALID"); edit.commit(); state("Paused: " + FailureText.label(code) + " (" + code + ")"); }
     private void singleState(QueueStore queue) {
         if (queue.pending().isEmpty()) { settings.edit().putBoolean("armed", false).commit(); state("Completed"); }
         else state("Waiting for next scheduled profile");
     }
     void run(String action, boolean single) {
         Diagnostics log = new Diagnostics(context); String generation = settings.getString("cookieGeneration", "");
-        boolean preflight = "test".equals(action); int verified = 0, consecutive = 0, attempts = 0, cached = 0; long totalMillis = 0;
+        boolean preflight = "test".equals(action); boolean sessionVerified = false; int verified = 0, consecutive = 0, attempts = 0, cached = 0; long totalMillis = 0;
         try (QueueStore queue = new QueueStore(context)) {
             provider = sessions.open();
             if (preflight) {
                 if (System.currentTimeMillis() < settings.getLong("retryAt", 0)) { block("RATE_LIMITED"); return; }
-                settings.edit().putString("verifiedGeneration", "").putInt("verifiedProfiles", 0).commit();
-                state("Testing cookie session"); provider.authenticate(); log.log("COOKIE", "SESSION_VERIFIED", 0);
-                if (queue.users(false).size() < 3 || settings.getString("tree", "").isEmpty()) { state("Cookies Valid. Select an output folder and import at least 3 accounts, then Test Cookies again."); return; }
+                settings.edit().putString("verifiedGeneration", "").putInt("verifiedProfiles", 0).putString("sessionEvidence", "UNKNOWN").commit();
+                if (queue.users(false).size() < 3 || settings.getString("tree", "").isEmpty()) { state("Select Output Folder and import at least 3 accounts, then Test Cookies again."); return; }
+                state("Testing cookie session");
+                try {
+                    provider.authenticate(); sessionVerified = true;
+                    SessionState.evidence(context, generation, "VERIFIED"); log.log("COOKIE", "SESSION_VERIFIED", 200);
+                } catch (ProfileProvider.Failure error) {
+                    if (!error.code.equals("COOKIE_AUTH_UNVERIFIED")) throw error;
+                    SessionState.evidence(context, generation, "UNVERIFIED"); log.log("COOKIE", "SESSION_UNVERIFIED", error.http);
+                    state("Session identity unverified; testing actual profile access");
+                }
             } else if (!SessionState.verified(settings)) { block("COOKIE_PREFLIGHT_REQUIRED"); return; }
             if ("missing".equals(action) || "failed".equals(action)) queue.reset(queue.users("failed".equals(action)));
             RunPolicy policy = RunPolicy.read(settings);
@@ -79,7 +87,7 @@ final class QueueEngine {
                 } finally { settings.edit().putLong("nextRequestAt", System.currentTimeMillis() + policy.delayMillis()).commit(); }
                 attempts++; totalMillis += android.os.SystemClock.elapsedRealtime() - started;
                 QueueControl.etaSeconds = attempts >= 3 ? (targets.size() - index - 1L) * (totalMillis / attempts + (policy.minimum + policy.maximum) * 500L) / 1000 : -1;
-                if (preflight && verified >= 3) { SessionState.verified(context, generation, verified); state("Cookies Valid · 3 profiles verified. Ready for Start Missing."); log.log("COOKIE", "PREFLIGHT_VERIFIED", verified); return; }
+                if (preflight && verified >= 3) { SessionState.verified(context, generation, verified); state(sessionVerified ? "Session verified · 3 profile photos verified. Ready for Start Missing." : "3 profile photos verified · Session identity unverified. Ready for Start Missing."); log.log("COOKIE", "PREFLIGHT_VERIFIED", verified); return; }
                 if (single) { singleState(queue); return; }
             }
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);

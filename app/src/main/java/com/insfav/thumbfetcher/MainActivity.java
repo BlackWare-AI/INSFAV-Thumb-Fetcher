@@ -74,7 +74,7 @@ public final class MainActivity extends Activity {
         if (busy || QueueControl.lock.get() || launchPending) return;
         if (!new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
         if (!saveSchedule()) return;
-        if (!"test".equals(action) && !SessionState.verified(settings)) { message("Use Test Cookies to verify the session and 3 profiles first"); return; }
+        if (!"test".equals(action) && !SessionState.verified(settings)) { message("Use Test Cookies to verify access to 3 profile photos first"); return; }
         if (!"test".equals(action) && (settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
         WorkScheduler.cancel(this);
         if ("test".equals(action)) settings.edit().putBoolean("armed", false).putBoolean("userPaused", true).putString("blocked", "").commit();
@@ -189,7 +189,9 @@ public final class MainActivity extends Activity {
         StringBuilder failureSummary = new StringBuilder();
         for (Map.Entry<String, Integer> failure : queue.failures().entrySet()) failureSummary.append("\n").append(FailureText.label(failure.getKey())).append(": ").append(failure.getValue()).append(" (").append(failure.getKey()).append(")");
         status.setText(detail + failureSummary);
-        cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured · Profiles verified: " + settings.getInt("verifiedProfiles", 0) + "/3" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
+        String evidence = SessionState.evidence(settings);
+        String sessionLabel = evidence.equals("VERIFIED") ? "Session verified" : evidence.equals("UNVERIFIED") ? "Session identity unverified" : evidence.equals("INVALID") ? "Session invalid / expired" : "Session not tested";
+        cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured · " + sessionLabel + "\nProfile photos verified: " + settings.getInt("verifiedProfiles", 0) + "/3" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;
         selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get() || settings.getBoolean("armed", false));

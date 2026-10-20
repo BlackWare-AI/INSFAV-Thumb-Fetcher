@@ -35,7 +35,7 @@ public class EngineTest {
     QueueEngine engine(PublicProfileProvider provider) { return new QueueEngine(storage.context, s -> {}, () -> false, () -> provider); }
     @Test public void preflightReallyFetchesThreeProfilesBeforeUnlockingBatch() throws Exception {
         prefs.edit().putInt("verifiedProfiles",0).putString("verifiedGeneration","").commit(); int[] calls={0}; engine(provider(calls,200)).run("test",false);
-        assertTrue(SessionState.verified(prefs)); assertEquals(3,prefs.getInt("verifiedProfiles",0)); assertEquals(7,calls[0]);
+        assertTrue(SessionState.verified(prefs)); assertEquals("VERIFIED",SessionState.evidence(prefs)); assertEquals(3,prefs.getInt("verifiedProfiles",0)); assertEquals(7,calls[0]);
         assertTrue(new OutputFolder(storage.context,storage.tree.toString()).valid("one.webp")); assertFalse(prefs.getBoolean("armed",false));
     }
     @Test public void unverifiedSessionCannotStartBatch() throws Exception {
@@ -65,5 +65,47 @@ public class EngineTest {
     }
     @Test public void cookieGenerationChangeInvalidatesProofAndBlocksAutoResume() throws Exception {
         assertTrue(SessionState.verified(prefs)); SessionState.changed(storage.context); assertFalse(SessionState.verified(prefs)); assertFalse(WorkScheduler.enabled(prefs));
+    }
+
+    PublicProfileProvider alternatePages(int[] calls, String home, int homeStatus, String profileMode) throws Exception {
+        byte[] pixels=CodecTest.png(180,220); CookieJar jar=CookieJar.parse("sessionid=TEST_SESSION; ds_user_id=123",System.currentTimeMillis());
+        return new PublicProfileProvider(url -> {
+            calls[0]++;
+            if(url.getHost().endsWith("cdninstagram.com"))return new ProviderTest.Stub(url,200,"") { @Override public String getContentType(){return "image/png";} @Override public InputStream getInputStream(){return new ByteArrayInputStream(pixels);} };
+            if(url.getPath().equals("/"))return new ProviderTest.Stub(url,homeStatus,home);
+            String user=url.getPath().replace("/","");
+            String body=profileMode.equals("login") ? "<form id='loginForm'></form>" : profileMode.equals("missing") ? "<script>{\"unrelated\":true}</script>" : ProviderTest.page(user,"false");
+            return new ProviderTest.Stub(url,200,body);
+        },jar);
+    }
+    @Test public void unsupportedHomepageCanVerifyRealPhotoAccessWithoutClaimingSessionIdentity() throws Exception {
+        int[] calls={0}; engine(alternatePages(calls,"<script>{\"new_schema\":true}</script>",200,"photo")).run("test",false);
+        assertEquals(7,calls[0]); assertTrue(SessionState.verified(prefs)); assertEquals("UNVERIFIED",SessionState.evidence(prefs));
+        assertTrue(prefs.getString("state","").contains("Session identity unverified")); assertFalse(prefs.getString("state","").contains("Cookies Valid"));
+        assertTrue(new OutputFolder(storage.context,storage.tree.toString()).valid("one.webp")); assertFalse(prefs.getBoolean("armed",false));
+    }
+    @Test public void unknownHomepageAndMissingPhotosNeverUnlockBatch() throws Exception {
+        int[] calls={0}; engine(alternatePages(calls,"<script>{\"new_schema\":true}</script>",200,"missing")).run("test",false);
+        assertEquals(4,calls[0]); assertFalse(SessionState.verified(prefs)); assertEquals("UNVERIFIED",SessionState.evidence(prefs)); assertEquals(Integer.valueOf(3),queue.counts().get("FAILED"));
+        assertEquals("PROFILE_IMAGE_URL_MISSING",prefs.getString("blocked",""));
+    }
+    @Test public void explicitHomepageRestrictionsNeverFallThroughToProfileRequests() throws Exception {
+        String[] pages={"<form id='loginForm'></form>","<script>{\"checkpoint_required\":true}</script>","","",""};
+        int[] statuses={200,200,401,403,429};
+        for(int i=0;i<statuses.length;i++){
+            prefs.edit().putLong("retryAt",0).commit(); int[] calls={0};
+            engine(alternatePages(calls,pages[i],statuses[i],"photo")).run("test",false);
+            assertEquals(1,calls[0]); assertFalse(SessionState.verified(prefs)); assertEquals(3,queue.pending().size());
+        }
+    }
+    @Test public void missingOutputFolderStopsBeforeNetworkAndExplainsPrerequisite() throws Exception {
+        prefs.edit().putString("tree","").commit(); int[] calls={0};
+        engine(alternatePages(calls,"<script>{\"new_schema\":true}</script>",200,"photo")).run("test",false);
+        assertEquals(0,calls[0]); assertFalse(SessionState.verified(prefs)); assertTrue(prefs.getString("state","").contains("Select Output Folder"));
+    }
+    @Test public void profileLoginStillInvalidatesCookieAfterUnrecognizedHomepage() throws Exception {
+        int[] calls={0}; engine(alternatePages(calls,"<script>{\"new_schema\":true}</script>",200,"login")).run("test",false);
+        assertEquals(2,calls[0]); assertFalse(SessionState.verified(prefs)); assertEquals("INVALID",SessionState.evidence(prefs));
+        assertEquals("COOKIE_INVALID_EXPIRED",prefs.getString("blocked","")); assertEquals(Integer.valueOf(1),queue.counts().get("FAILED"));
     }
 }

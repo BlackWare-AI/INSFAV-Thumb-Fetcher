@@ -7,7 +7,7 @@ Run `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:ass
 - Three JSON formats, 32 MiB cap, invalid/duplicate counts, order, Turkish locale, 1k/5k/10k synthetic imports and preserving valid data after rejection.
 - Netscape/HttpOnly and HTTP-header parsing; domain/path/expiry; ambiguity, input bounds and injection rejection.
 - AES-GCM roundtrip, ciphertext not plaintext, tamper failure and remove. A test AES key is injected; Android Keystore itself still needs a device.
-- Viewer attestation versus unrelated profiles; cookie headers only on permitted Instagram HTTPS requests, never image CDNs; login/redirect/404/403/429/network-loss fixtures.
+- Unknown homepage metadata versus real profile access; explicit homepage/profile login/challenge/HTTP errors still stop; missing output folder sends no request. Viewer attestation versus unrelated profiles; cookie headers only on permitted Instagram HTTPS requests, never image CDNs; login/redirect/404/403/429/network-loss fixtures.
 - Three independent fixture image downloads required for preflight; existing media cannot supply proof by itself. Unverified sessions cannot start batch. One scheduled execution makes at most one profile retrieval (cached files are checked in bounded groups). Valid cached outputs skip network.
 - Overnight/end-exclusive windows, next local start, delay bounds, invalid time inputs and the explicit arming/background/proof/pause/error predicates.
 - 429 saves Retry-After and pauses, no out-of-window network, Pause finishes an in-flight write without starting another account, and cookie changes invalidate proof/scheduling.

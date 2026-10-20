@@ -105,7 +105,7 @@ final class PublicProfileProvider implements ProfileProvider {
             HttpsURLConnection connection = connections.open(url); active = connection;
             try {
                 connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.1");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.2");
                 if (!image && cookies != null) {
                     if (cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_EXPIRED", 0, 0, true);
                     connection.setRequestProperty("Cookie", cookies.header(url, System.currentTimeMillis()));

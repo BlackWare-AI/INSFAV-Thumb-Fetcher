@@ -35,9 +35,9 @@ final class Diagnostics {
         return error instanceof OutOfMemoryError ? "IMPORT_MEMORY_LIMIT" : "INVALID_OR_UNREADABLE_JSON";
     }
     synchronized void export(OutputStream output) throws IOException {
-        output.write("INSFAV Thumb Fetcher 0.2.1\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
+        output.write("INSFAV Thumb Fetcher 0.2.2\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
         try (QueueStore queue = new QueueStore(context)) {
-            output.write(("Android SDK: " + android.os.Build.VERSION.SDK_INT + "\nCounters: " + queue.counts() + "\nFailures: " + queue.failures() + "\nVerified profiles: " + SessionState.prefs(context).getInt("verifiedProfiles", 0) + "\n").getBytes(StandardCharsets.UTF_8));
+            output.write(("Android SDK: " + android.os.Build.VERSION.SDK_INT + "\nCounters: " + queue.counts() + "\nFailures: " + queue.failures() + "\nSession evidence: " + SessionState.evidence(SessionState.prefs(context)) + "\nVerified profiles: " + SessionState.prefs(context).getInt("verifiedProfiles", 0) + "\n").getBytes(StandardCharsets.UTF_8));
         }
         for (File file : new File[]{previous, current}) if (file.exists()) try (FileInputStream input = new FileInputStream(file)) {
             byte[] buffer = new byte[4096]; int n; while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);

@@ -1,3 +1,15 @@
+# 0.2.2 — distinguish profile access from session identity
+
+A successful HTTP response without supported homepage viewer metadata previously stopped the entire preflight as COOKIE_AUTH_UNVERIFIED before any profile could be tested. 0.2.2 records UNVERIFIED session evidence for that specific outcome and tests real target-bound profile images instead. It never reports unknown cookie acceptance as valid: public photo access does not prove authentication.
+
+At least three actual distinct profile image downloads, native image decoding and verified output handling remain required before batch/automatic work can unlock. HTTP/login/challenge/cookie/network failures still stop. Missing or ambiguous profile metadata cannot unlock anything. Original JSON, username output naming, existing media and main INSFAV remain unchanged. Test prerequisites (at least three accounts and an output folder) are now checked before network requests.
+
+Session evidence (VERIFIED, UNVERIFIED, INVALID, UNKNOWN) is shown separately in UI/diagnostics and reset on cookie changes. No raw server response or session values are logged or committed. No exposed cookie is reused for development.
+
+Five additional engine regression tests cover unsupported homepage + real image access, unsupported homepage + missing photos, explicit homepage restrictions, absent output folder, and a login wall on a profile after an unknown homepage. Build verification is pending CI; real-device profile retrieval is not yet proven. Previous measurements below are historical.
+
+---
+
 # 0.2.1 — access-wall classification fix
 
 The 0.2.0 classifier could mark an HTTP 200 page as CHALLENGE_REQUIRED solely because its script bundles contained the word captcha, a /challenge/ string, or login UI text. Those strings do not establish an active access wall.
