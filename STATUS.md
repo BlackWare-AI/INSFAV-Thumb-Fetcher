@@ -6,7 +6,7 @@ The 0.2.0 classifier could mark an HTTP 200 page as CHALLENGE_REQUIRED solely be
 
 Regression tests cover bundled module names, navigation links, authenticated viewer metadata, discovered-image transport, explicit challenge/login flags and forms, and fail-closed behavior when authentication/photo evidence is absent. No user cookies, response bodies, personal diagnostics or account identifiers are included in source or fixtures. The shared session is not reused for this change.
 
-Build/test verification is pending CI. Live profile downloads and physical-device scheduling remain unverified. The 0.2.0 results below are historical baseline measurements; they do not describe the new APK's size or signing certificate.
+Verification passed: 53 tests, zero failures/errors; lint has 0 errors and 15 warnings. Debug and R8/resource-shrunk release builds succeeded. CI: https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39371722092 . Tested application commit: 5b5c9a821b7edb22af6b5bdc48ac6e787cd94e8f . Artifact: https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39371722092/artifacts/12241986259 . Debug APK: 2,479,191 bytes, SHA-256 22241013a5b01499e99a911bd8b3303a6c20052c7fb50d66dd40deb301e8079c . Unsigned shrunk release: 258,161 bytes. CI uses an ephemeral debug signing key; an update over an earlier APK may require reinstalling only the helper, which clears its private queue/cookies/settings but preserves external JSON/photos. Live profile downloads and physical-device scheduling remain unverified. The 0.2.0 results below are historical baseline measurements; they do not describe the new APK's size or signing certificate.
 
 ---
 
