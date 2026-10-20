@@ -108,4 +108,30 @@ public class EngineTest {
         assertEquals(2,calls[0]); assertFalse(SessionState.verified(prefs)); assertEquals("INVALID",SessionState.evidence(prefs));
         assertEquals("COOKIE_INVALID_EXPIRED",prefs.getString("blocked","")); assertEquals(Integer.valueOf(1),queue.counts().get("FAILED"));
     }
+    @Test public void unavailableAccountsAreSkippedWithoutStoppingLaterDownloads() throws Exception {
+        queue.replace(ImportTest.parse("[{\"items\":[{\"pageId\":\"gone1\"},{\"pageId\":\"gone2\"},{\"pageId\":\"gone3\"},{\"pageId\":\"one\"}]}]"));
+        byte[] pixels=CodecTest.png(180,180); int[] profiles={0};
+        PublicProfileProvider provider=new PublicProfileProvider(url -> {
+            if(url.getHost().endsWith("cdninstagram.com")) return new ProviderTest.Stub(url,200,"") {
+                @Override public String getContentType(){return "image/png";}
+                @Override public InputStream getInputStream(){return new ByteArrayInputStream(pixels);}
+            };
+            profiles[0]++; String user=url.getPath().replace("/","");
+            return new ProviderTest.Stub(url,user.startsWith("gone")?404:200,ProviderTest.page(user,"false"));
+        });
+        engine(provider).run("resume",false);
+        assertEquals(4,profiles[0]); assertEquals(Integer.valueOf(3),queue.counts().get("SKIPPED"));
+        assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS")); assertTrue(queue.failures().isEmpty());
+        assertEquals("Completed",prefs.getString("state",""));
+        assertTrue(new OutputFolder(storage.context,storage.tree.toString()).valid("one.webp"));
+    }
+    @Test public void serverErrorPageIsFailedAndPausedNeverSkippedAsDeleted() throws Exception {
+        int[] calls={0};
+        PublicProfileProvider provider=new PublicProfileProvider(url -> {calls[0]++;return new ProviderTest.Stub(url,200,ProviderTest.ERROR_PAGE);});
+        engine(provider).run("resume",false);
+        assertEquals(1,calls[0]); assertEquals(Integer.valueOf(1),queue.counts().get("FAILED"));
+        assertFalse(queue.counts().containsKey("SKIPPED")); assertEquals(2,queue.pending().size());
+        assertEquals("PROFILE_PAGE_UNAVAILABLE",prefs.getString("blocked",""));
+    }
+
 }

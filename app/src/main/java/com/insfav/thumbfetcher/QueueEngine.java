@@ -52,7 +52,7 @@ final class QueueEngine {
             RunPolicy policy = RunPolicy.read(settings);
             if (!preflight && !policy.contains(ZonedDateTime.now())) { state("Waiting for working hours"); return; }
             OutputFolder output = new OutputFolder(context, settings.getString("tree", ""));
-            List<String> targets = preflight ? queue.users(false).subList(0, Math.min(5, queue.users(false).size())) : queue.pending();
+            List<String> targets = preflight ? queue.preflightCandidates() : queue.pending();
             for (int index = 0; index < targets.size() && !interrupted(); index++) {
                 String user = targets.get(index); QueueControl.current = user;
                 if (!generation.equals(settings.getString("cookieGeneration", ""))) { block("COOKIE_CHANGED"); return; }
@@ -77,9 +77,12 @@ final class QueueEngine {
                     log.log("PROFILE", wrote ? "SUCCESS" : "EXISTING", 0);
                 } catch (ProfileProvider.Failure error) {
                     if (interrupted()) break;
-                    queue.mark(user, "FAILED", error.code); log.log("PROFILE", error.code, error.http);
+                    // A profile-page 404 means unavailable for this run, never proof of deletion.
+                    boolean unavailable = error.http == 404 && error.code.equals("PROFILE_NOT_FOUND_OR_UNAVAILABLE") && !error.pause;
+                    queue.mark(user, unavailable ? "SKIPPED" : "FAILED", error.code); log.log("PROFILE", error.code, error.http);
+                    if (unavailable) consecutive = 0;
                     if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).commit();
-                    if (error.pause || error.code.startsWith("COOKIE_") || ++consecutive >= 3) { block(error.code); return; }
+                    if (error.pause || error.code.startsWith("COOKIE_") || (!unavailable && ++consecutive >= 3)) { block(error.code); return; }
                 } catch (IOException error) {
                     if (QueueControl.phase.equals("Writing thumbnail")) throw error;
                     String code = Diagnostics.imageCode(error); queue.mark(user, "FAILED", code); log.log("IMAGE", code, 0);

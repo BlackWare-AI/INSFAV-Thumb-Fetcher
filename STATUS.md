@@ -1,3 +1,15 @@
+# 0.2.3 unavailable-profile handling
+
+Profile-page HTTP 404 responses are recorded as SKIPPED (unavailable for this run), separately from FAILED and successful thumbnails. This does not assert deletion. Manual Start Missing rechecks these rows; source JSON and existing images are untouched. Skips do not trigger the consecutive download failure limit. Notifications and the main counter include skipped accounts. Manual preflight prefers untried profiles and excludes skipped rows.
+
+HTTP 200 pages with a routed PolarisErrorRoot server component are classified PROFILE_PAGE_UNAVAILABLE, recorded as FAILED and pause the queue. Generic JavaScript module mentions alone do not trigger this classification. An unavailable error page or missing photo metadata is never evidence that an account does not exist. Missing metadata, login, rate-limit and network failures are not skipped as nonexistent.
+
+Live access remains unresolved: a read-only, unauthenticated request for the user-provided existing profile returned HTTP 200 with an error root and no profile picture metadata. This environment has not verified an authenticated real photo download. No real cookies or account identifiers are included in source or fixtures. This build changes queue handling and diagnostics; it does not claim to repair Instagram access.
+
+Automated regression tests cover persistent/retryable skipped state, selection of untried profiles, continuing after three HTTP 404 responses, server error-page detection and keeping an HTTP 200 error page separate from nonexistent accounts. CI verification pending for this commit.
+
+---
+
 # 0.2.2 — distinguish profile access from session identity
 
 A successful HTTP response without supported homepage viewer metadata previously stopped the entire preflight as COOKIE_AUTH_UNVERIFIED before any profile could be tested. 0.2.2 records UNVERIFIED session evidence for that specific outcome and tests real target-bound profile images instead. It never reports unknown cookie acceptance as valid: public photo access does not prove authentication.

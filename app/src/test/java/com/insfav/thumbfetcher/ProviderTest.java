@@ -76,4 +76,18 @@ public class ProviderTest {
         @Override public Certificate[] getLocalCertificates() { return null; }
         @Override public Certificate[] getServerCertificates() { return null; }
     }
+    static final String ERROR_PAGE = "<script type='application/json'>{\"initialRouteInfo\":{\"route\":{\"rootView\":{\"resource\":{\"__dr\":\"PolarisErrorRoot.react\"},\"props\":{\"failure_reason\":null,\"page_type\":\"PROFILE\"}}}}}</script>";
+    @Test public void routedErrorPageDoesNotProveNonexistentAccount() throws Exception {
+        PublicProfileProvider provider = new PublicProfileProvider(url -> new Stub(url, 200, ERROR_PAGE));
+        try { provider.fetch("example"); fail(); }
+        catch (ProfileProvider.Failure error) {
+            assertEquals("PROFILE_PAGE_UNAVAILABLE", error.code); assertEquals(200, error.http); assertTrue(error.pause);
+        }
+    }
+    @Test public void bundleReferenceAloneIsNotAnErrorPage() throws Exception {
+        assertEquals(IMAGE, PublicProfileProvider.photo("<script>{\"modules\":[\"PolarisErrorRoot.react\"]}</script>" + page("example", "false"), "example").toString());
+        try { PublicProfileProvider.photo("<script>{\"modules\":[\"PolarisErrorRoot.react\"]}</script>", "example"); fail(); }
+        catch (ProfileProvider.Failure error) { assertEquals("PROFILE_IMAGE_URL_MISSING", error.code); assertFalse(error.pause); }
+    }
+
 }

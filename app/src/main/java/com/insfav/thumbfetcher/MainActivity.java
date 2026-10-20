@@ -179,9 +179,9 @@ public final class MainActivity extends Activity {
     private void update() {
         if (stats == null) return;
         Map<String, Integer> counts = queue.counts(); int total = 0; for (int value : counts.values()) total += value;
-        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), remaining = counts.getOrDefault("PENDING", 0);
+        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0), remaining = counts.getOrDefault("PENDING", 0);
         int percent = total == 0 ? 0 : (total - remaining) * 100 / total;
-        stats.setText(String.format(Locale.ROOT, "Total unique accounts: %,d\nExisting valid thumbnails: %,d\nSuccessfully downloaded: %,d\nFailed: %,d\nRemaining: %,d\nProgress: %d%%", total, existing, success, failed, remaining, percent));
+        stats.setText(String.format(Locale.ROOT, "Total unique accounts: %,d\nExisting valid thumbnails: %,d\nSuccessfully downloaded: %,d\nFailed: %,d\nSkipped (unavailable): %,d\nRemaining: %,d\nProgress: %d%%", total, existing, success, failed, skipped, remaining, percent));
         progress.setProgress(percent);
         String detail = busy ? "Preparing…" : settings.getString("state", "Idle");
         if (QueueControl.lock.get()) { detail += "\nCurrent: " + QueueControl.current; if (QueueControl.etaSeconds >= 0) detail += "\nEstimated remaining: " + QueueControl.etaSeconds / 60 + " min"; }

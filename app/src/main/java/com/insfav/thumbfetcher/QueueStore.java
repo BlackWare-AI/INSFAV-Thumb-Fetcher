@@ -24,6 +24,14 @@ final class QueueStore extends SQLiteOpenHelper {
         }
         return users;
     }
+    // Prefer untried profiles on a manual test; do not keep probing the same unavailable rows.
+    List<String> preflightCandidates() {
+        ArrayList<String> users = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().rawQuery("SELECT username FROM accounts WHERE status!='SKIPPED' ORDER BY CASE WHEN status='PENDING' THEN 0 ELSE 1 END,position LIMIT 5", null)) {
+            while (cursor.moveToNext()) users.add(cursor.getString(0));
+        }
+        return users;
+    }
     void mark(String user, String status, String code) {
         ContentValues values = new ContentValues(); values.put("status", status); values.put("code", code);
         getWritableDatabase().update("accounts", values, "username=?", new String[]{user});

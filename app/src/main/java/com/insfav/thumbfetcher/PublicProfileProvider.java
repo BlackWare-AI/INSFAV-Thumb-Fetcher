@@ -105,7 +105,7 @@ final class PublicProfileProvider implements ProfileProvider {
             HttpsURLConnection connection = connections.open(url); active = connection;
             try {
                 connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.2");
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.2.3");
                 if (!image && cookies != null) {
                     if (cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_EXPIRED", 0, 0, true);
                     connection.setRequestProperty("Cookie", cookies.header(url, System.currentTimeMillis()));
@@ -142,20 +142,36 @@ final class PublicProfileProvider implements ProfileProvider {
         throw new Failure("REDIRECT_LIMIT", 0, 0, true);
     }
     static URL photo(String html, String user) throws Failure {
-        Matcher matcher = SCRIPT.matcher(html); LinkedHashSet<String> found = new LinkedHashSet<>(); boolean[] restricted = {false}; int scripts = 0;
+        Matcher matcher = SCRIPT.matcher(html); LinkedHashSet<String> found = new LinkedHashSet<>(); boolean[] restricted = {false}; boolean errorPage = false; int scripts = 0;
         while (matcher.find() && ++scripts <= 512) {
             String body = jsonBody(matcher.group(1));
             if (!(body.startsWith("{") || body.startsWith("["))) continue;
-            try { Object value = new JSONTokener(body).nextValue(); find(value, user, found, 0, new int[]{0}, restricted); }
+            try { Object value = new JSONTokener(body).nextValue(); find(value, user, found, 0, new int[]{0}, restricted); errorPage |= profileErrorPage(value, 0, new int[]{0}); }
             catch (JSONException ignored) { /* JavaScript is not JSON; never evaluate it. */ }
         }
         if (found.isEmpty() && restricted[0]) throw new Failure("PRIVATE_RESTRICTED", 200, 0, false);
         if (found.size() != 1) {
             rejectWall(html, false);
+            if (found.isEmpty() && errorPage) throw new Failure("PROFILE_PAGE_UNAVAILABLE", 200, 0, true);
             throw new Failure(found.isEmpty() ? "PROFILE_IMAGE_URL_MISSING" : "PROFILE_DATA_AMBIGUOUS", 200, 0, false);
         }
         try { URL url = new URL(found.iterator().next()); if (!trusted(url, true)) throw new Failure("UNTRUSTED_SOURCE"); return url; }
         catch (MalformedURLException error) { throw new Failure("INVALID_IMAGE_URL"); }
+    }
+    // Inspect routed server data, not module names mentioned in JavaScript bundles.
+    private static boolean profileErrorPage(Object value, int depth, int[] visits) {
+        if (depth > 48 || ++visits[0] > 50000) return false;
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject)value, view = object.optJSONObject("rootView");
+            JSONObject resource = view == null ? null : view.optJSONObject("resource");
+            if (resource != null && "PolarisErrorRoot.react".equals(resource.optString("__dr"))) return true;
+            Iterator<String> keys = object.keys();
+            while (keys.hasNext()) if (profileErrorPage(object.opt(keys.next()), depth + 1, visits)) return true;
+        } else if (value instanceof JSONArray) {
+            JSONArray array = (JSONArray)value;
+            for (int i = 0; i < array.length(); i++) if (profileErrorPage(array.opt(i), depth + 1, visits)) return true;
+        }
+        return false;
     }
     private static void find(Object value, String user, Set<String> found, int depth, int[] visits, boolean[] restricted) {
         if (depth > 48 || ++visits[0] > 50000) return;

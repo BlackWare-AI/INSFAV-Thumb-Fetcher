@@ -27,4 +27,18 @@ public class QueueTest {
         assertEquals(Arrays.asList("example", "valid_2"), store.users(false));
     }
     @Test public void unfinishedRowsRemainPendingAcrossProcessRestart() { store.mark("example", "EXISTING", "VALID_WEBP"); store.close(); store = new QueueStore(context); assertEquals(Collections.singletonList("valid_2"), store.pending()); }
+    @Test public void unavailableIsPersistentSeparateAndExplicitlyRetryable() {
+        store.mark("example", "SKIPPED", "PROFILE_NOT_FOUND_OR_UNAVAILABLE");
+        store.close(); store = new QueueStore(context);
+        assertEquals(Integer.valueOf(1), store.counts().get("SKIPPED"));
+        assertTrue(store.users(true).isEmpty()); assertTrue(store.failures().isEmpty());
+        assertEquals(Collections.singletonList("valid_2"), store.preflightCandidates());
+        store.reset(store.users(false));
+        assertEquals(Arrays.asList("example", "valid_2"), store.pending());
+    }
+    @Test public void preflightPrefersUntriedAccountsOverEarlierFailures() {
+        store.mark("example", "FAILED", "PROFILE_IMAGE_URL_MISSING");
+        assertEquals(Arrays.asList("valid_2", "example"), store.preflightCandidates());
+    }
+
 }
