@@ -32,6 +32,16 @@ public class CookieTest {
             try { CookieJar.parse(raw, 1000); fail(); } catch (ProfileProvider.Failure expected) { }
         }
     }
+    @Test public void preservesQuotedBrowserCookieEscapes() throws Exception {
+        String raw = "sessionid=TEST_SESSION; rur=\"REGION\\054123\\0542000000000:TEST\"";
+        CookieJar jar=CookieJar.parse(raw,1000);
+        assertEquals(raw,jar.header(new URL("https://www.instagram.com/example/"),1000));
+        String netscape=".instagram.com\tTRUE\t/\tTRUE\t0\tsessionid\tTEST_SESSION\n.instagram.com\tTRUE\t/\tTRUE\t0\trur\t\"REGION\\054123\"";
+        assertTrue(CookieJar.parse(netscape,1000).header(new URL("https://www.instagram.com/"),1000).contains("rur=\"REGION\\054123\""));
+        for(String bad:new String[]{"sessionid=TEST; rur=\"open", "sessionid=TEST; rur=\"bad\"quote\"", "sessionid=TEST; rur=\"bad\\\""}) {
+            try {CookieJar.parse(bad,1000);fail();} catch(ProfileProvider.Failure expected) { }
+        }
+    }
     @Test public void authenticatedViewerRequiresIdentityAndRejectsRecommendations() {
         assertTrue(PublicProfileProvider.authenticated("<script>{\"config\":{\"viewerId\":\"123\"}}</script>", "123"));
         assertFalse(PublicProfileProvider.authenticated("<script>{\"config\":{\"viewerId\":\"999\"}}</script>", "123"));

@@ -43,7 +43,6 @@ final class CookieJar {
             for (String item : line.split(";")) {
                 int equals = item.indexOf('='); if (equals < 1) throw new ProfileProvider.Failure("COOKIE_INVALID");
                 String name = item.substring(0, equals).trim(), value = item.substring(equals + 1).trim();
-                if (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2) value = value.substring(1, value.length() - 1);
                 validate(name, value); values.add(new Entry(name, value, "www.instagram.com", "/", false, 0));
             }
         }
@@ -56,7 +55,14 @@ final class CookieJar {
     }
     private static void validate(String name, String value) throws ProfileProvider.Failure {
         if (!name.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+") || name.length() > 128 || value.length() > 8192) throw new ProfileProvider.Failure("COOKIE_INVALID");
-        for (char c : value.toCharArray()) if (c < 0x21 || c > 0x7e || c == ';' || c == ',' || c == '"' || c == '\\') throw new ProfileProvider.Failure("COOKIE_INVALID");
+        boolean quoted = value.length() >= 2 && value.charAt(0) == '"' && value.charAt(value.length() - 1) == '"';
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 0x21 || c > 0x7e || c == ';') throw new ProfileProvider.Failure("COOKIE_INVALID");
+            if (quoted && (i == 0 || i == value.length() - 1)) continue;
+            if (quoted && c == '\\') { if (++i >= value.length() - 1 || value.charAt(i) < 0x21 || value.charAt(i) > 0x7e || value.charAt(i) == ';') throw new ProfileProvider.Failure("COOKIE_INVALID"); continue; }
+            if (c == '"' || c == '\\' || (!quoted && c == ',')) throw new ProfileProvider.Failure("COOKIE_INVALID");
+        }
     }
     String header(URL target, long now) throws ProfileProvider.Failure {
         String host = target.getHost().toLowerCase(Locale.ROOT);
