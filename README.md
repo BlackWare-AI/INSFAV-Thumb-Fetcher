@@ -1,5 +1,33 @@
 # INSFAV Thumb Fetcher 0.3.0
 
+## Preserved working build
+
+The owner reported successful real photo downloads on 2026-10-20. Application source reference: `3fc7a40a6d7aa7f30e264b776a3a87df568f1285`, versionCode 6 / versionName **0.3.0**. The requested tag `v0.2.2-working` is an archival label for this 0.3.0 WebView build, not the earlier HTTP-only 0.2.2. Runtime code, resources, manifest, Gradle files and wrapper are preserved without changes.
+
+- [Working tag](https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/tree/v0.2.2-working)
+- [INSFAV Thumb Fetcher — Working WebView Build](https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/releases/tag/v0.2.2-working)
+- Exact original APK: 2,493,548 bytes, SHA-256 `1f03bfb584ce951bc0c7da67f3df81f5a130071302ba29e2c8106f1241cb24fa`.
+- The existing development APK v2 signature is retained; no signing key is uploaded.
+- Known issues retained: inaccessible accounts can pause/error the queue; the Test Cookies section is planned for removal. Neither is changed in this archive.
+- The preservation workflow checks source equality, reachable Git history, clean compilation/tests and emulator startup before publication. Emulator startup does not prove authenticated Instagram access.
+
+## Future integration into INSFAV
+
+These boundaries document a later integration. No code is transferred to the main INSFAV repository in this archival task.
+
+| Function | Reference code |
+| --- | --- |
+| Instagram session management | `CookieJar.java`, `CookieVault.java`, `SessionState.java`, `ThumbApplication.java`; scoped CookieManager copies in `WebViewProfileProvider.java` |
+| Hidden WebView engine | `ProfileProvider.java`, `WebViewProfileProvider.java`; main-thread creation, callbacks, polling, cancellation and cleanup |
+| Profile-photo URL discovery | `app/src/main/assets/profile-probe.js`, `WebProfilePolicy.java`; account identity, loaded avatar, trusted HTTPS sources |
+| Image download and conversion | `PublicProfileProvider.java` CDN transport, `ThumbnailCodec.java`; bounded decode, crop and 128 × 128 WebP quality 78 |
+| Queue and state | `QueueEngine.java`, `QueueStore.java`, `QueueControl.java`, `RunPolicy.java`, `FetchService.java`, `DownloadWorker.java`, `RecoveryWorker.java`, `WorkScheduler.java` and notification/control receivers |
+| Verified file output | `Identity.java`, `OutputFolder.java`; normalized username, SAF `.thumbnails/username.webp`, staging/readback and valid-file preservation |
+| Import and diagnostics | `BackupParser.java`, `Diagnostics.java`, `FailureText.java`; original JSON read only and redacted fixed-code logs |
+
+Future integration must preserve the DOM asset, WebView main-looper ownership/cleanup, encrypted vault, serial queue, schedule constraints and SAF grants. Use main INSFAV's existing accounts rather than adding collection or JSON editing. Test-gate removal, unavailable-account fixes and full-resolution viewing are later changes, after preserving this reference.
+
+
 Independent native Java Android helper. Reads a local INSFAV JSON backup and writes `.thumbnails/username.webp`: 128 × 128, center crop, WebP quality 78. The main INSFAV app and original JSON are unchanged.
 
 ## Hidden WebView profile engine
@@ -20,7 +48,7 @@ Only allowed HTTPS Instagram/CDN resources are loaded. External navigation, file
 
 Previously recorded HTTP-provider proof is invalidated on upgrade. A session cookie's presence is not proof of accepted authentication: homepage viewer metadata must match ds_user_id for Session verified. When unsupported, session identity remains unverified, and actual profile access is tested separately. Existing files alone never establish live proof. Valid files are preserved even during preflight.
 
-**Real authenticated one-account and five-account downloads have not been verified in this development environment.** Automated fixtures are not proof of real Instagram access. Use the two device tests above; export diagnostics on failure, never cookies.
+**The owner reported successful real downloads with this preserved APK. The developer has not independently repeated authenticated one/five-account tests in this environment.** Automated fixtures are not proof of real Instagram access. Use the two device tests above; export diagnostics on failure, never cookies.
 
 ## Queue, storage and scheduling
 

@@ -1,0 +1,97 @@
+name: Preserve working WebView build
+on:
+  push:
+    branches: [cookie-background]
+    paths: [.github/workflows/preserve-working.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: preserve-working-webview
+  cancel-in-progress: false
+jobs:
+  preserve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: BlackWare-AI/INSFAV-Thumb-Fetcher
+      WORKING_SOURCE: 3fc7a40a6d7aa7f30e264b776a3a87df568f1285
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify unchanged application and complete project
+        run: |
+          git diff --exit-code "$WORKING_SOURCE" HEAD -- app gradle gradlew gradlew.bat build.gradle settings.gradle gradle.properties
+          test -f app/src/main/java/com/insfav/thumbfetcher/WebViewProfileProvider.java
+          test -f app/src/main/assets/profile-probe.js
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -x gradlew
+          python3 tools/audit-history.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clean build and existing regression gates
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          node --test tools/profile-probe.test.cjs
+          ./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Retrieve and verify exact original working APK
+        run: |
+          gh run download 39463080746 --name INSFAV-Thumb-Fetcher-builds --dir original-working
+          cp original-working/outputs/apk/debug/app-debug.apk original-working/INSFAV-Thumb-Fetcher-0.3.0.apk
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          apk = Path("original-working/INSFAV-Thumb-Fetcher-0.3.0.apk")
+          assert apk.stat().st_size == 2493548
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == "1f03bfb584ce951bc0c7da67f3df81f5a130071302ba29e2c8106f1241cb24fa"
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs original-working/INSFAV-Thumb-Fetcher-0.3.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging original-working/INSFAV-Thumb-Fetcher-0.3.0.apk > original-working/apk-badging.txt
+          head -3 original-working/apk-badging.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch clean and original APKs on Android 10
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none
+          script: bash tools/launch-smoke.sh
+      - name: Preserve tag and publish verified original APK
+        run: |
+          tag=v0.2.2-working
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" "$GITHUB_SHA" -m "Preserved working WebView application 0.3.0; archival label requested by owner"
+            git push origin "refs/tags/$tag"
+          fi
+          gh release create "$tag" original-working/INSFAV-Thumb-Fetcher-0.3.0.apk --verify-tag --title "INSFAV Thumb Fetcher — Working WebView Build" --notes-file WORKING-RELEASE.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: working-preservation-verification
+          path: |
+            app/build/outputs/apk/
+            app/build/reports/
+            app/build/test-results/
