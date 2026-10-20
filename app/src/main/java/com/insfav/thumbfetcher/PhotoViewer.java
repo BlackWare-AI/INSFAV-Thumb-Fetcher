@@ -52,6 +52,7 @@ final class PhotoViewer {
                 BitmapFactory.Options options = new BitmapFactory.Options(); options.inSampleSize = 1;
                 while (Math.max(b.outWidth, b.outHeight) / options.inSampleSize > 2048) options.inSampleSize = options.inSampleSize == 0 ? 2 : options.inSampleSize * 2;
                 Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+                java.util.Arrays.fill(bytes, (byte)0);
                 if (bitmap == null) throw new IOException("IMAGE_DECODE_FAILED");
                 showBitmap(bitmap, true, b.outWidth, b.outHeight);
             } catch (ProfileProvider.Failure error) {

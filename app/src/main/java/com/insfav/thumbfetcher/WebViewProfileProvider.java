@@ -129,6 +129,7 @@ final class WebViewProfileProvider implements ProfileProvider {
         cancel(); CountDownLatch cleaned = new CountDownLatch(1);
         main.post(() -> {
             try {
+                if (!views.isEmpty()) views.iterator().next().clearCache(true);
                 for (WebView view : new ArrayList<>(views)) destroy(view);
                 WebStorage.getInstance().deleteAllData();
                 CookieManager.getInstance().removeAllCookies(ignored -> {
@@ -280,8 +281,8 @@ final class WebViewProfileProvider implements ProfileProvider {
                         String wall = data.optString("wall");
                         if (!wall.isEmpty()) {
                             // Only this fixed vocabulary may cross into logs.
-                            for (String allowed : new String[]{"CHALLENGE_REQUIRED","COOKIE_INVALID_EXPIRED","PROFILE_PAGE_UNAVAILABLE","PROFILE_DEFAULT_AVATAR","PROFILE_DATA_AMBIGUOUS","UNTRUSTED_SOURCE"})
-                                if (wall.equals(allowed)) { fail(new Failure(allowed, 200, 0, !allowed.equals("PROFILE_DEFAULT_AVATAR") && !allowed.equals("PROFILE_DATA_AMBIGUOUS"))); return; }
+                            for (String allowed : new String[]{"RATE_LIMITED","ACCESS_BLOCKED","CHALLENGE_REQUIRED","COOKIE_INVALID_EXPIRED","PROFILE_PAGE_UNAVAILABLE","PROFILE_DEFAULT_AVATAR","PROFILE_DATA_AMBIGUOUS","UNTRUSTED_SOURCE"})
+                                if (wall.equals(allowed)) { fail(new Failure(allowed, 200, allowed.equals("RATE_LIMITED") ? PublicProfileProvider.retryAt(null, System.currentTimeMillis()) : 0, !allowed.equals("PROFILE_DEFAULT_AVATAR") && !allowed.equals("PROFILE_DATA_AMBIGUOUS"))); return; }
                             fail(new Failure("WEBVIEW_SNAPSHOT_INVALID", 0, 0, true)); return;
                         }
                         if (user.isEmpty() && data.optBoolean("authenticated")) { finish(data, null); return; }

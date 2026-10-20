@@ -12,6 +12,9 @@ function (expected, expectedId, preferHigh) {
         if (action.includes("/challenge") || action.includes("/checkpoint")) return wall("CHALLENGE_REQUIRED");
         if (f.id === "loginForm" || action.includes("/accounts/login")) return wall("COOKIE_INVALID_EXPIRED");
     }
+    const pageText = document.body && typeof document.body.innerText === "string" ? document.body.innerText.slice(0, 24000).toLowerCase() : "";
+    if (/please wait a few minutes before you try again|we restrict certain activity/.test(pageText)) return wall("RATE_LIMITED");
+    if (/sorry, this page isn.t available|bu sayfa kullanılamıyor/.test(pageText)) return wall("PROFILE_PAGE_UNAVAILABLE");
     const structured = new Set();
     let viewer = false, anonymous = false, routedError = false, visits = 0;
     const normalize = x => typeof x === "string" ? x.trim().replace(/^@/, "").toLowerCase() : "";

@@ -35,6 +35,13 @@ public class UiTest {
         stop.performClick(); assertFalse(SessionState.prefs(context).getBoolean("armed",true));
         controller.pause().stop().destroy();
     }
+    @Test public void transientViewerReleasesOldAndClosedBitmaps() {
+        PhotoViewer.ZoomImage image = new PhotoViewer.ZoomImage(RuntimeEnvironment.getApplication());
+        android.graphics.Bitmap first = android.graphics.Bitmap.createBitmap(128,128,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Bitmap source = android.graphics.Bitmap.createBitmap(640,480,android.graphics.Bitmap.Config.ARGB_8888);
+        image.replace(first); image.replace(source); assertTrue(first.isRecycled()); assertSame(source,image.bitmap);
+        image.replace(null); assertTrue(source.isRecycled()); assertNull(image.bitmap);
+    }
     private static View find(View v,String text) {
         if(v instanceof TextView&&((TextView)v).getText().toString().equals(text))return v;
         if(v instanceof ViewGroup){ViewGroup group=(ViewGroup)v;for(int i=0;i<group.getChildCount();i++){View found=find(group.getChildAt(i),text);if(found!=null)return found;}}return null;

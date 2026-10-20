@@ -109,7 +109,7 @@ final class PublicProfileProvider implements ProfileProvider {
             }
             HttpsURLConnection connection = connections.open(url); active = connection;
             try {
-                connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
+                connection.setUseCaches(false); connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 INSFAVThumbFetcher/0.4.0");
                 if (!image && cookies != null) {
                     if (cookies.value("sessionid", System.currentTimeMillis()).isEmpty()) throw new Failure("COOKIE_EXPIRED", 0, 0, true);
@@ -122,8 +122,8 @@ final class PublicProfileProvider implements ProfileProvider {
                 if (cancelled) throw new Failure("REQUEST_CANCELLED");
                 if (System.nanoTime() > deadline) throw new Failure("REQUEST_TIMEOUT");
                 if (status == 429) throw new Failure("RATE_LIMITED", status, retryAt(connection.getHeaderField("Retry-After"), System.currentTimeMillis()), true);
-                if (status == 401) throw new Failure(image ? "DOWNLOAD_FAILED" : cookies == null ? "LOGIN_REQUIRED" : "COOKIE_INVALID_EXPIRED", status, 0, true);
-                if (status == 403) throw new Failure(image ? "DOWNLOAD_FAILED" : "PRIVATE_RESTRICTED", status, 0, true);
+                if (status == 401) throw new Failure(image ? "DOWNLOAD_FAILED" : cookies == null ? "LOGIN_REQUIRED" : "COOKIE_INVALID_EXPIRED", status, 0, !image);
+                if (status == 403) throw new Failure(image ? "DOWNLOAD_FAILED" : "PRIVATE_RESTRICTED", status, 0, !image);
                 if (status == 404) throw new Failure(image ? "DOWNLOAD_FAILED" : "PROFILE_NOT_FOUND_OR_UNAVAILABLE", status, 0, false);
                 if (status >= 300 && status < 400) {
                     String location = connection.getHeaderField("Location");

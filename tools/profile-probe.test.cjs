@@ -9,9 +9,9 @@ function image(alt,src=PHOTO, options={}) {
         closest:selector=>selector==='article,nav,aside'?(options.post?{}:null):(options.header===false?null:{}),
         ...options};
 }
-function probe({images=[],data=[],path='/example/',canonical='https://www.instagram.com/example/',forms=[],createdLoaded=true,high=false}={}) {
+function probe({images=[],data=[],path='/example/',canonical='https://www.instagram.com/example/',forms=[],createdLoaded=true,high=false,text=""}={}) {
     const context={URL, location:{href:'https://www.instagram.com'+path,pathname:path},
-        document:{images,scripts:data.map(x=>({textContent:typeof x==='string'?x:JSON.stringify(x)})),
+        document:{body:{innerText:text},images,scripts:data.map(x=>({textContent:typeof x==='string'?x:JSON.stringify(x)})),
             querySelector:()=>canonical?{href:canonical}:null,querySelectorAll:()=>forms},
         Image:class {constructor(){this.complete=createdLoaded;this.naturalWidth=createdLoaded?320:0;this.naturalHeight=createdLoaded?320:0;}},
         window:{}};
@@ -78,4 +78,13 @@ test('HD mode only uses a larger source explicitly offered on the same bound ava
     const avatar=image("example's profile picture",PHOTO,{getAttribute:key=>key==='alt'?"example's profile picture":key==='srcset'?PHOTO+' 320w, '+hd+' 1080w':null});
     assert.equal(probe({images:[avatar],high:true}).url,hd);
     assert.equal(probe({images:[image("other's profile picture")],high:true}).url,undefined);
+});
+
+test('visible unavailable pages are distinct from a rate limit wall',()=>{
+    assert.equal(probe({text:"Sorry, this page isn't available."}).wall,'PROFILE_PAGE_UNAVAILABLE');
+    assert.equal(probe({text:'Please wait a few minutes before you try again.'}).wall,'RATE_LIMITED');
+});
+test('HD info object takes precedence over a smaller profile URL',()=>{
+    const hd=PHOTO+'?realHD=1';
+    assert.equal(probe({high:true,data:[{username:'example',id:'4',profile_pic_url:PHOTO,hd_profile_pic_url_info:{url:hd}}]}).url,hd);
 });

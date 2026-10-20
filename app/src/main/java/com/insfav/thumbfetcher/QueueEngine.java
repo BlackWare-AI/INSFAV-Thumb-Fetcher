@@ -53,6 +53,7 @@ final class QueueEngine {
             List<String> targets = queue.pending();
             int limit = single ? 1 : capacity.applyAsInt(ConcurrencyPolicy.validate(settings.getInt("concurrentWebViews", 1)));
             QueueControl.effectiveViews = limit; QueueControl.memoryPressure = false;
+            log.log("POOL", "REQUESTED_LIMIT", settings.getInt("concurrentWebViews", 1)); log.log("POOL", "EFFECTIVE_LIMIT", limit);
             workers = Executors.newFixedThreadPool(limit);
             CompletionService<Result> completed = new ExecutorCompletionService<>(workers);
             Set<String> inFlight = new HashSet<>();
@@ -115,6 +116,7 @@ final class QueueEngine {
                     if (FailurePolicy.pause(error)) { block(error.code); blocked = true; break; }
                     if (error.code.equals("WEBVIEW_RENDERER_GONE")) QueueControl.memoryPressure = true;
                 }
+                settings.edit().putLong("nextRequestAt", Math.max(settings.getLong("nextRequestAt", 0), System.currentTimeMillis() + policy.delayMillis())).commit();
                 finished++;
                 QueueControl.etaSeconds = finished >= 3 ? Math.max(0, targets.size() - index + inFlight.size()) * (android.os.SystemClock.elapsedRealtime() - started) / finished / 1000 : -1;
                 state(hoursEnded ? "Finishing active profiles; working hours ended" : "Downloading");
