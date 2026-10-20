@@ -2,6 +2,7 @@
 set -euo pipefail
 package=com.insfav.thumbfetcher
 for apk in app/build/outputs/apk/debug/app-debug.apk original-working/INSFAV-Thumb-Fetcher-0.3.0.apk; do
+  echo "Checking APK: $apk"
   adb uninstall "$package" >/dev/null 2>&1 || true
   adb install "$apk"
   adb logcat -c
@@ -9,8 +10,7 @@ for apk in app/build/outputs/apk/debug/app-debug.apk original-working/INSFAV-Thu
   sleep 5
   adb shell pidof "$package"
   adb shell dumpsys activity activities | grep -E 'mResumedActivity.*com.insfav.thumbfetcher/.MainActivity'
-  adb shell dumpsys window windows | grep -E 'mCurrentFocus=.*com\.insfav\.thumbfetcher/.*MainActivity'
-  if adb logcat -d -b crash | grep -q 'com.insfav.thumbfetcher'; then
+  if adb logcat -d -b crash | grep 'com.insfav.thumbfetcher'; then
     echo "Application crash detected"
     exit 1
   fi
