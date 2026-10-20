@@ -6,7 +6,7 @@ At least three actual distinct profile image downloads, native image decoding an
 
 Session evidence (VERIFIED, UNVERIFIED, INVALID, UNKNOWN) is shown separately in UI/diagnostics and reset on cookie changes. No raw server response or session values are logged or committed. No exposed cookie is reused for development.
 
-Five additional engine regression tests cover unsupported homepage + real image access, unsupported homepage + missing photos, explicit homepage restrictions, absent output folder, and a login wall on a profile after an unknown homepage. Build verification is pending CI; real-device profile retrieval is not yet proven. Previous measurements below are historical.
+Five additional engine regression tests cover unsupported homepage + real image access, unsupported homepage + missing photos, explicit homepage restrictions, absent output folder, and a login wall on a profile after an unknown homepage. Verification: [CI](https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39372695896) passed 58 tests, lint (0 errors, 16 warnings), debug and R8/resource-shrunk release builds for application commit 6e82d6e5fda2eaa32774b33a999b231252a62c42. [Artifact](https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/actions/runs/39372695896/artifacts/12241284424): debug 2,479,775 bytes; unsigned release 258,349 bytes. Debug SHA-256: 61e534a46ce7990894ddc240d04370305c0432f9541b1db37a7210f5c6b5ae39. CI certificates are ephemeral; updating an earlier APK may require helper reinstall, clearing its private queue/cookies/settings but preserving external files; real-device profile retrieval is not yet proven. Previous measurements below are historical.
 
 ---
 
