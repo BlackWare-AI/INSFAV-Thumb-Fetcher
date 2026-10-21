@@ -38,6 +38,7 @@ final class OutputFolder {
             if (cursor == null) throw new IOException("OUTPUT_UNAVAILABLE");
             while (cursor.moveToNext()) {
                 String name = cursor.getString(1);
+                if(name.toLowerCase(Locale.ROOT).endsWith(".webp")){String user=Identity.normalize(name.substring(0,name.length()-5));if(Identity.valid(user))name=user+".webp";}
                 if (result.containsKey(name)) throw new IOException("OUTPUT_DUPLICATE_NAMES");
                 result.put(name, DocumentsContract.buildDocumentUriUsingTree(tree, cursor.getString(0)));
             }
@@ -86,16 +87,9 @@ final class OutputFolder {
     byte[] thumbnail(String filename) throws IOException {
         Uri file = files.get(filename); return file == null ? null : read(resolver.openInputStream(file));
     }
-    boolean legacy(String filename) throws IOException {
-        if (!valid(filename)) return false;
-        byte[] bytes = thumbnail(filename);
-        android.graphics.BitmapFactory.Options b = new android.graphics.BitmapFactory.Options(); b.inJustDecodeBounds = true;
-        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length, b); return b.outWidth == 128;
-    }
-    boolean write(String filename, byte[] bytes) throws IOException { return write(filename, bytes, false); }
-    boolean write(String filename, byte[] bytes, boolean refreshLegacy) throws IOException {
+    boolean write(String filename, byte[] bytes) throws IOException {
         if (!ThumbnailCodec.valid(bytes)) throw new IOException("OUTPUT_INVALID_WEBP");
-        if (valid(filename) && !(refreshLegacy && legacy(filename))) return false;
+        if (valid(filename)) return false;
         recover(filename);
         Uri pending = DocumentsContract.createDocument(resolver, folder, "application/octet-stream", filename + ".part");
         if (pending == null) throw new IOException("OUTPUT_CREATE_FAILED");

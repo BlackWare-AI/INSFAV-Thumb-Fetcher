@@ -40,15 +40,14 @@ final class QueueEngine {
         Diagnostics log = new Diagnostics(context);
         ExecutorService workers = null;
         String generation = settings.getString("cookieGeneration", "");
-        boolean refreshLegacy = "refresh_legacy".equals(action) || !("missing".equals(action) || "failed".equals(action)) && settings.getBoolean("refreshLegacy", false), hoursEnded = false, blocked = false;
-        settings.edit().putBoolean("refreshLegacy", refreshLegacy).commit();
+        boolean hoursEnded = false, blocked = false;
         try (QueueStore queue = new QueueStore(context)) {
             // No hidden preflight or homepage identity test. Explicit server restrictions still pause.
             if (System.currentTimeMillis() < settings.getLong("retryAt", 0)) { block("RATE_LIMITED"); return; }
-            if ("missing".equals(action) || refreshLegacy) queue.reset(queue.users(false));
+            if ("missing".equals(action)) queue.reset(queue.users(false));
             else if ("failed".equals(action)) queue.reset(queue.retryable());
             RunPolicy policy = RunPolicy.read(settings);
-            if (!policy.contains(ZonedDateTime.now())) { state("Waiting for working hours"); return; }
+            if (!policy.contains(ZonedDateTime.now())) { state("Paused — Outside Schedule"); return; }
             OutputFolder output = new OutputFolder(context, settings.getString("tree", ""));
             List<String> targets = queue.pending();
             int limit = single ? 1 : capacity.applyAsInt(ConcurrencyPolicy.validate(settings.getInt("concurrentWebViews", 1)));
@@ -75,7 +74,7 @@ final class QueueEngine {
                     String user = targets.get(index), filename = Identity.outputFilename(user);
                     // Existing-file checks do not consume a network launch slot.
                     output.recover(filename);
-                    if (output.valid(filename) && !(refreshLegacy && output.legacy(filename))) {
+                    if (output.valid(filename)) {
                         queue.mark(user, "EXISTING", "VALID_WEBP"); index++; state("Checking existing thumbnails"); continue;
                     }
                     if (System.currentTimeMillis() >= next) {
@@ -86,7 +85,7 @@ final class QueueEngine {
                         state("Downloading");
                         completed.submit(() -> {
                             Result result = new Result(user);
-                            try { result.bytes = ThumbnailCodec.convert(provider.fetch(user)); }
+                            try { if(!RunPolicy.read(settings).contains(ZonedDateTime.now()))throw new ProfileProvider.Failure("OUTSIDE_WORKING_HOURS");result.bytes = ThumbnailCodec.convert(provider.fetch(user)); }
                             catch (ProfileProvider.Failure error) { result.failure = error; }
                             catch (IOException error) { result.failure = new ProfileProvider.Failure(Diagnostics.imageCode(error)); }
                             catch (OutOfMemoryError error) { QueueControl.memoryPressure = true; result.failure = new ProfileProvider.Failure("IMAGE_MEMORY_LIMIT"); }
@@ -101,13 +100,14 @@ final class QueueEngine {
                 Result result = ready.get();
                 if (!inFlight.remove(result.user)) continue; // A result is committed once by this coordinator.
                 if (result.failure == null) {
-                    boolean wrote = output.write(Identity.outputFilename(result.user), result.bytes, refreshLegacy);
+                    boolean wrote = output.write(Identity.outputFilename(result.user), result.bytes);
                     result.bytes = null;
                     queue.mark(result.user, wrote ? "SUCCESS" : "EXISTING", "VALID_WEBP");
                     settings.edit().putString("previewUser", result.user).commit();
                     log.log("PROFILE", wrote ? "SUCCESS" : "EXISTING", 0);
                 } else {
                     ProfileProvider.Failure error = result.failure;
+                    if(error.code.equals("OUTSIDE_WORKING_HOURS")){hoursEnded=true;continue;}
                     if (error.code.equals("REQUEST_CANCELLED")) continue; // Leave pending for a manual resume.
                     queue.mark(result.user, FailurePolicy.skip(error.code) ? "SKIPPED" : "FAILED", error.code);
                     log.log("PROFILE", error.code, error.http);
@@ -121,7 +121,7 @@ final class QueueEngine {
                 state(hoursEnded ? "Finishing active profiles; working hours ended" : "Downloading");
             }
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);
-            else if (!blocked && hoursEnded) state("Waiting for working hours");
+            else if (!blocked && hoursEnded) state("Paused — Outside Schedule");
             else if (!blocked && queue.pending().isEmpty()) { settings.edit().putBoolean("armed", false).commit(); state("Completed"); }
             else if (!blocked) state("Waiting for next scheduled profile");
         } catch (ProfileProvider.Failure error) { if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).commit(); block(error.code); log.log("COOKIE", error.code, error.http); }
