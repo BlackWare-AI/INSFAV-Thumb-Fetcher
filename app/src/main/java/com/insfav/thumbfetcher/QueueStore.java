@@ -118,7 +118,8 @@ final class QueueStore extends SQLiteOpenHelper {
         finally { db.endTransaction(); }
     }
     void recoverInterrupted(){getWritableDatabase().execSQL("UPDATE accounts SET status='PENDING',phase='PENDING',eligible=1 WHERE phase='DOWNLOADING'");}
-    void prepareMissing(){getWritableDatabase().execSQL("UPDATE accounts SET status='PENDING',phase='PENDING',code='',eligible=1 WHERE status IN ('SUCCESS','EXISTING','PENDING','RETRY_LATER')");}
+    /** Re-enable unfinished work without reopening completed accounts. Full file verification is explicit. */
+    void prepareMissing(){getWritableDatabase().execSQL("UPDATE accounts SET eligible=1 WHERE status IN ('PENDING','RETRY_LATER')");}
     void attempted(String user){getWritableDatabase().execSQL("UPDATE accounts SET attempts=attempts+1 WHERE username=?",new String[]{user});}
     boolean claim(String user){ContentValues v=new ContentValues();v.put("phase","DOWNLOADING");return getWritableDatabase().update("accounts",v,"username=? AND phase!='DOWNLOADING' AND status IN ('PENDING','RETRY_LATER')",new String[]{user})==1;}
     int attempts(String user){try(Cursor c=getReadableDatabase().rawQuery("SELECT attempts FROM accounts WHERE username=?",new String[]{user})){return c.moveToFirst()?c.getInt(0):0;}}

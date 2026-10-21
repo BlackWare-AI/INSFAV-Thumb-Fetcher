@@ -2,7 +2,7 @@
 
 This branch ports the integrated Fetcher's durable queue/index, queue-backed notifications, rate-limit cooldown scheduling, and thumbnail resolution audit into the standalone helper. It retains the standalone JSON parser, cookie vault, WebView pool, photo viewer, SAF output, and 256 × 256 WebP encoder. Application version is 0.5.0 (versionCode 8).
 
-The output index and account queue are stored in private SQLite. Reimporting an unchanged account list keeps completion status; changed lists preserve rows for accounts still present. A full output folder index happens on first use or through **More → Verify Thumbnail Index**. Subsequent runs resolve saved SAF URIs and verify each output when it is processed. Start Missing rechecks previously completed rows, so removed files become eligible again. Interrupted claims return to Pending.
+The output index and account queue are stored in private SQLite. Reimporting an unchanged account list keeps completion status; changed lists preserve rows for accounts still present. A full output folder index happens on first use or through **More → Verify Thumbnail Index**. Start Missing only re-enables unfinished accounts and does not reopen completed output files on each run. SAF change notifications invalidate changed indexed files; explicit verification is available if a storage provider does not report external folder changes. Interrupted claims return to Pending.
 
 Notifications now show queue-derived completed, failed, skipped, remaining and progress counts. Rate limits preserve Retry-After and can resume through WorkManager within the configured hours when Background Processing remains enabled. Android may delay or stop background work.
 
