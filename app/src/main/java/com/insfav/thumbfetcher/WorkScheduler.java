@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 final class WorkScheduler {
     static final String NEXT = "insfav-next-profile", RECOVERY = "insfav-queue-recovery";
-    static boolean enabled(SharedPreferences p) { return p.getBoolean("background", false) && p.getBoolean("armed", false) && !p.getBoolean("userPaused", true) && p.getString("blocked", "").isEmpty(); }
+    static boolean enabled(SharedPreferences p) { String blocked=p.getString("blocked", "");return p.getBoolean("background", false) && p.getBoolean("armed", false) && !p.getBoolean("userPaused", true) && (blocked.isEmpty() || "RATE_LIMITED".equals(blocked)); }
     static void recovery(Context c) {
         if (!enabled(SessionState.prefs(c))) return;
         WorkManager.getInstance(c).enqueueUniquePeriodicWork(RECOVERY, ExistingPeriodicWorkPolicy.KEEP,

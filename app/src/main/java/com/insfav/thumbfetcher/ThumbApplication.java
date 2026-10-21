@@ -14,6 +14,7 @@ public final class ThumbApplication extends Application {
                 .putBoolean("userPaused", true).putString("blocked", "").putString("state", "WebView engine ready; tap Start Missing").commit();
             WorkScheduler.cancel(this);
         }
+        OutputIndexObserver.attach(this, settings.getString("tree", ""));
         clearBrowserSession();
     }
     @Override public void onTrimMemory(int level) {

@@ -3,6 +3,7 @@ package com.insfav.thumbfetcher;
 import android.content.*;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Bundle;
 import android.provider.DocumentsContract;
 import java.io.*;
 import java.util.*;
@@ -12,8 +13,14 @@ final class OutputFolder {
     private final ContentResolver resolver;
     private final Uri tree, folder;
     private final Map<String, Uri> files = new HashMap<>();
+    private final QueueStore catalog;
+    private final String catalogScope;
     OutputFolder(Context context, String treeValue) throws IOException {
+        this(context, treeValue, null, false);
+    }
+    OutputFolder(Context context, String treeValue, QueueStore catalog, boolean verify) throws IOException {
         resolver = context.getContentResolver(); tree = Uri.parse(treeValue);
+        this.catalog = catalog;
         boolean permission = false;
         for (UriPermission p : resolver.getPersistedUriPermissions()) if (p.getUri().equals(tree) && p.isReadPermission() && p.isWritePermission()) permission = true;
         if (!permission) throw new SecurityException("OUTPUT_PERMISSION_LOST");
@@ -29,7 +36,80 @@ final class OutputFolder {
         try (Cursor c = resolver.query(folder, new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null)) {
             if (c == null || !c.moveToFirst() || !".thumbnails".equals(c.getString(0)) || !DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(1))) throw new IOException("OUTPUT_FOLDER_INVALID");
         }
-        files.putAll(children(folder));
+        catalogScope = tree.toString() + "\n" + DocumentsContract.getDocumentId(folder);
+        if (catalog == null) files.putAll(children(folder));
+        else if (verify || "1".equals(catalog.meta("verificationRecommended")) || !("1".equals(catalog.meta("ready")) && catalogScope.equals(catalog.meta("folder")))) indexCatalog(catalog.users(false));
+        else for (String user : catalog.users(false)) if (catalog.image(user) == null) catalog.image(new QueueStore.Image(user, "", user + ".webp", 0, 0, 0, 0, false));
+    }
+
+    /** Full SAF enumeration is performed once per output-folder scope or explicit verification. */
+    private void indexCatalog(List<String> users) throws IOException {
+        Map<String, Uri> found = children(folder);
+        files.putAll(found);
+        Set<String> known = new HashSet<>();
+        for (Map.Entry<String, Uri> item : found.entrySet()) {
+            String filename=item.getKey();
+            if (!filename.toLowerCase(Locale.ROOT).endsWith(".webp")) continue;
+            String user=Identity.normalize(filename.substring(0,filename.length()-5));
+            if (!Identity.valid(user)) continue;
+            Uri uri=item.getValue();
+            QueueStore.Image previous=catalog.image(user);
+            byte[] data=null;boolean readable;
+            try { data=read(resolver.openInputStream(uri));readable=decodableWebp(data); }
+            catch (FileNotFoundException missing) { readable=false; }
+            long size=-1, modified=0;
+            try (Cursor c=resolver.query(uri,new String[]{DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED},null,null)) {
+                if(c!=null&&c.moveToFirst()){size=c.isNull(0)?-1:c.getLong(0);modified=c.isNull(1)?0:c.getLong(1);}
+            }
+            int width=0,height=0;
+            if(readable){android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(data,0,data.length,bounds);width=bounds.outWidth;height=bounds.outHeight;}
+            if(previous==null||!previous.uri.equals(uri.toString())||previous.size!=size||previous.modified!=modified||previous.readable!=readable||previous.width!=width||previous.height!=height)
+                catalog.image(new QueueStore.Image(user,uri.toString(),filename,size,width,height,modified,readable));
+            if(!readable)catalog.mark(user,"PENDING","INVALID_LOCAL_THUMBNAIL");
+            known.add(user);
+        }
+        catalog.clearMissingImages(known);
+        for(String user:users)if(!known.contains(user))catalog.image(new QueueStore.Image(user,"",user+".webp",0,0,0,0,false));
+        catalog.meta("folder",catalogScope);catalog.meta("ready","1");catalog.meta("verificationRecommended","0");catalog.settleImages();
+    }
+
+    private Uri lookup(String filename) throws IOException {
+        if(catalog==null)return files.get(filename);
+        String user=Identity.normalize(filename.substring(0,filename.length()-5));
+        QueueStore.Image image=catalog.image(user);
+        if(image==null)return null;
+        if(image.needsCheck){
+            if(image.uri.isEmpty())return null;
+            Uri candidate=Uri.parse(image.uri);
+            try {
+                byte[] bytes=read(resolver.openInputStream(candidate));boolean readable=decodableWebp(bytes);
+                android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+                QueueStore.Image checked=new QueueStore.Image(user,image.uri,image.name,bytes.length,bounds.outWidth,bounds.outHeight,image.modified,readable);catalog.image(checked);
+                if(!readable){catalog.requeueLost(user);return null;}
+                files.put(filename,candidate);return candidate;
+            }catch(FileNotFoundException missing){catalog.image(new QueueStore.Image(user,"",filename,0,0,0,0,false));catalog.requeueLost(user);return null;}
+            catch(IOException corrupt){if("OUTPUT_SIZE_REJECTED".equals(corrupt.getMessage())){catalog.image(new QueueStore.Image(user,image.uri,image.name,image.size,0,0,image.modified,false));catalog.requeueLost(user);return null;}throw corrupt;}
+        }
+        if(image.uri.isEmpty())return null;
+        Uri uri=Uri.parse(image.uri);files.put(filename,uri);return uri;
+    }
+    private static boolean decodableWebp(byte[] bytes) {
+        if(bytes==null||bytes.length<20||bytes.length>ThumbnailCodec.MAX_OUTPUT||!"RIFF".equals(new String(bytes,0,4,java.nio.charset.StandardCharsets.US_ASCII))||!"WEBP".equals(new String(bytes,8,4,java.nio.charset.StandardCharsets.US_ASCII)))return false;
+        long size=0;for(int i=0;i<4;i++)size|=(long)(bytes[4+i]&255)<<(8*i);if(size+8!=bytes.length)return false;
+        android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+        if(!"image/webp".equals(bounds.outMimeType)||bounds.outWidth<1||bounds.outHeight<1||bounds.outWidth>16384||bounds.outHeight>16384||(long)bounds.outWidth*bounds.outHeight>40000000)return false;
+        android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=1;while(Math.max(bounds.outWidth,bounds.outHeight)/options.inSampleSize>512)options.inSampleSize*=2;
+        android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(bitmap==null)return false;bitmap.recycle();return true;
+    }
+    private Uri findExact(String name) throws IOException {
+        Uri child=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getDocumentId(folder));
+        String[] columns={DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE};
+        Bundle args=new Bundle();args.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,DocumentsContract.Document.COLUMN_DISPLAY_NAME+"=?");args.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{name});
+        try(Cursor c=resolver.query(child,columns,args,null)){
+            if(c==null)throw new IOException("OUTPUT_UNAVAILABLE");
+            while(c.moveToNext())if(name.equals(c.getString(1))&&!DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2))){Uri uri=DocumentsContract.buildDocumentUriUsingTree(tree,c.getString(0));files.put(name,uri);return uri;}
+        }
+        return null;
     }
     private Map<String, Uri> children(Uri directory) throws IOException {
         Uri child = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(directory));
@@ -60,27 +140,37 @@ final class OutputFolder {
         }
     }
     boolean valid(String filename) throws IOException {
-        Uri file = files.get(filename); if (file == null) return false;
-        try { return ThumbnailCodec.valid(read(resolver.openInputStream(file))); }
-        catch (FileNotFoundException error) { throw new IOException("OUTPUT_UNAVAILABLE", error); }
+        Uri file = lookup(filename); if (file == null) return false;
+        try {
+            byte[] bytes=read(resolver.openInputStream(file));boolean valid=catalog==null?ThumbnailCodec.valid(bytes):decodableWebp(bytes);
+            if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);QueueStore.Image old=catalog.image(user);long modified=old==null?0:old.modified;catalog.image(new QueueStore.Image(user,file.toString(),filename,bytes.length,bounds.outWidth,bounds.outHeight,modified,valid));}
+            return valid;
+        }
+        catch (FileNotFoundException error) {
+            if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));files.remove(filename);catalog.image(new QueueStore.Image(user,"",filename,0,0,0,0,false));return false;}
+            throw new IOException("OUTPUT_UNAVAILABLE", error);
+        }
         catch (IOException error) { if ("OUTPUT_SIZE_REJECTED".equals(error.getMessage())) return false; throw error; }
     }
     void recover(String filename) throws IOException {
-        Uri backup = files.get(filename + ".bak");
+        Uri backup = files.get(filename + ".bak"); if(backup==null&&catalog!=null)backup=findExact(filename+".bak");
         if (backup != null) {
             if (valid(filename)) {
+                OutputIndexObserver.own(backup);
                 if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
             } else {
                 Uri bad = files.remove(filename);
-                if (bad != null && !DocumentsContract.deleteDocument(resolver, bad)) throw new IOException("OUTPUT_RESTORE_FAILED");
+                if (bad != null) { OutputIndexObserver.own(bad); if (!DocumentsContract.deleteDocument(resolver, bad)) throw new IOException("OUTPUT_RESTORE_FAILED"); }
                 Uri restored = DocumentsContract.renameDocument(resolver, backup, filename);
                 if (restored == null) throw new IOException("OUTPUT_RESTORE_FAILED");
+                OutputIndexObserver.own(restored);
                 exactName(restored, filename); files.put(filename, restored);
             }
             files.remove(filename + ".bak");
         }
-        Uri partial = files.get(filename + ".part");
+        Uri partial = files.get(filename + ".part"); if(partial==null&&catalog!=null)partial=findExact(filename+".part");
         if (partial != null) {
+            OutputIndexObserver.own(partial);
             if (!DocumentsContract.deleteDocument(resolver, partial)) throw new IOException("PARTIAL_CLEANUP_FAILED");
             files.remove(filename + ".part");
         }
@@ -91,14 +181,17 @@ final class OutputFolder {
         }
     }
     byte[] thumbnail(String filename) throws IOException {
-        Uri file = files.get(filename); return file == null ? null : read(resolver.openInputStream(file));
+        Uri file = lookup(filename); return file == null ? null : read(resolver.openInputStream(file));
     }
     boolean write(String filename, byte[] bytes) throws IOException {
         if (!ThumbnailCodec.valid(bytes)) throw new IOException("OUTPUT_INVALID_WEBP");
+        Uri current=lookup(filename);
+        if(current!=null)files.put(filename,current);
         if (valid(filename)) return false;
         recover(filename);
         Uri pending = DocumentsContract.createDocument(resolver, folder, "application/octet-stream", filename + ".part");
         if (pending == null) throw new IOException("OUTPUT_CREATE_FAILED");
+        OutputIndexObserver.own(pending);
         files.put(filename + ".part", pending);
         exactName(pending, filename + ".part");
         try (OutputStream output = resolver.openOutputStream(pending, "wt")) {
@@ -112,9 +205,10 @@ final class OutputFolder {
                 try { backup = DocumentsContract.renameDocument(resolver, old, filename + ".bak"); }
                 catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
                 if (backup == null) throw new IOException("OUTPUT_BACKUP_FAILED");
+                OutputIndexObserver.own(backup);
                 files.remove(filename); files.put(filename + ".bak", backup); exactName(backup, filename + ".bak");
             } else {
-                if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename);
+                OutputIndexObserver.own(old);if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename);
             }
         }
         try {
@@ -122,7 +216,10 @@ final class OutputFolder {
             try { committed = DocumentsContract.renameDocument(resolver, pending, filename); }
             catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
             if (committed == null) throw new IOException("ATOMIC_RENAME_UNSUPPORTED");
+            OutputIndexObserver.own(committed);
             files.remove(filename + ".part"); files.put(filename, committed); exactName(committed, filename);
+            // The catalog-backed lookup used by valid() must see this newly committed URI.
+            if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);catalog.image(new QueueStore.Image(user,committed.toString(),filename,bytes.length,bounds.outWidth,bounds.outHeight,System.currentTimeMillis(),true));}
             if (!valid(filename)) throw new IOException("OUTPUT_FINAL_VERIFY_FAILED");
         } catch (IOException | SecurityException error) {
             // If access is still available, restore now. Otherwise next open recovers the backup.
@@ -130,9 +227,11 @@ final class OutputFolder {
             throw error;
         }
         if (backup != null) {
+            OutputIndexObserver.own(backup);
             if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
             files.remove(filename + ".bak");
         }
+        if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);long size=bytes.length;long modified=System.currentTimeMillis();catalog.image(new QueueStore.Image(user,files.get(filename).toString(),filename,size,bounds.outWidth,bounds.outHeight,modified,true));}
         return true;
     }
 }

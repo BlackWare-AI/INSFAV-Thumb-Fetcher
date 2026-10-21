@@ -34,8 +34,9 @@ final class PhotoViewer {
         dialog.show();
         worker.execute(() -> {
             try {
-                byte[] bytes = new OutputFolder(activity, SessionState.prefs(activity).getString("tree", "")).thumbnail(Identity.outputFilename(user));
+                try (QueueStore queue = new QueueStore(activity)) { byte[] bytes = new OutputFolder(activity, SessionState.prefs(activity).getString("tree", ""), queue, false).thumbnail(Identity.outputFilename(user));
                 if (bytes != null && ThumbnailCodec.valid(bytes)) showBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.length), false, 0, 0);
+                }
             } catch (IOException | SecurityException error) { main.post(() -> { if (!closed) label.setText(user + " · Local thumbnail unavailable"); }); }
             if (closed) return;
             // A viewer shares the same exclusive session owner as the queue, preventing cookie purges.

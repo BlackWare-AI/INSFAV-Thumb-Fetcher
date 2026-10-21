@@ -40,6 +40,7 @@ public class EngineTest {
     }
     @Test public void startsDirectlyWithoutCookieProofAndWrites256Webp() throws Exception {
         engine(fake(user -> pixels)).run("missing",false);
+        assertEquals("state="+prefs.getString("state","")+", blocked="+prefs.getString("blocked",""),"Completed",prefs.getString("state",""));
         assertEquals(Integer.valueOf(4),queue.counts().get("SUCCESS")); assertEquals("Completed",prefs.getString("state",""));
         byte[] bytes = new OutputFolder(storage.context,storage.tree.toString()).thumbnail("synthetic_0.webp");
         android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length);
@@ -60,7 +61,7 @@ public class EngineTest {
         for(String code:new String[]{"RATE_LIMITED","COOKIE_INVALID_EXPIRED","CHALLENGE_REQUIRED","PRIVATE_RESTRICTED"}) {
             accounts(4); prefs.edit().putLong("retryAt",0).putString("blocked","").commit(); AtomicInteger calls=new AtomicInteger();
             engine(fake(user -> {calls.incrementAndGet(); throw new ProfileProvider.Failure(code,429,System.currentTimeMillis()+60000,true);})).run("missing",false);
-            assertEquals(1,calls.get()); assertEquals(3,queue.pending().size()); assertEquals(code,prefs.getString("blocked","")); assertTrue(prefs.getLong("retryAt",0)>System.currentTimeMillis());
+            assertEquals(1,calls.get()); assertEquals(4,queue.pending().size()); assertEquals(Integer.valueOf(1),queue.counts().get("RETRY_LATER")); assertEquals(code,prefs.getString("blocked","")); assertTrue(prefs.getLong("retryAt",0)>System.currentTimeMillis());
         }
     }
     @Test public void retryAfterIsRespectedBeforeAnyProfileRequest() {
@@ -74,6 +75,8 @@ public class EngineTest {
             AtomicInteger active=new AtomicInteger(), peak=new AtomicInteger(); Set<String> users=ConcurrentHashMap.newKeySet();
             CountDownLatch firstWave=new CountDownLatch(limit);
             ProfileProvider provider=fake(user -> {
+                // Isolate the worker-pool ceiling from the separately tested launch pacing policy.
+                prefs.edit().putLong("nextRequestAt",0).commit();
                 assertTrue("Duplicate assignment",users.add(user)); int n=active.incrementAndGet(); peak.accumulateAndGet(n,Math::max); firstWave.countDown();
                 try { if(!firstWave.await(8,TimeUnit.SECONDS))throw new AssertionError("Expected parallel dispatch"); Thread.sleep(10); }
                 catch(InterruptedException e){Thread.currentThread().interrupt();throw new ProfileProvider.Failure("REQUEST_CANCELLED");}

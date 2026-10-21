@@ -17,20 +17,21 @@ public final class FetchService extends Service {
         if (intent == null) { stopSelf(id); return START_NOT_STICKY; }
         String action = intent.getAction();
         if ("pause".equals(action) || "stop".equals(action)) { QueueControl.pause(this, "stop".equals(action)); if (!owns) stopSelf(id); return START_NOT_STICKY; }
-        if (!("missing".equals(action) || "failed".equals(action) || "resume".equals(action))) { stopSelf(id); return START_NOT_STICKY; }
+        if (!("missing".equals(action) || "failed".equals(action) || "resume".equals(action) || "verify_index".equals(action))) { stopSelf(id); return START_NOT_STICKY; }
         if (owns || !QueueControl.lock.compareAndSet(false, true)) { if (!owns) stopSelf(id); return START_NOT_STICKY; }
         owns = true; running = true; QueueControl.requested = false;
         try {
-            Notification notification = DownloadNotification.create(this, "Preparing");
+            Notification notification = DownloadNotification.preparing(this);
             if (Build.VERSION.SDK_INT >= 29) startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC); else startForeground(1, notification);
         } catch (RuntimeException error) { running = false; owns = false; QueueControl.lock.set(false); SessionState.prefs(this).edit().putString("blocked", "SYSTEM_RESTRICTED").putString("state", "Paused: foreground service unavailable").commit(); stopSelf(); return START_NOT_STICKY; }
         worker = new Thread(() -> {
             try {
-                QueueEngine.Reporter reporter = state -> { try { getSystemService(NotificationManager.class).notify(1, DownloadNotification.create(this, state)); } catch (RuntimeException ignored) { } };
+                QueueEngine.Reporter reporter = state -> DownloadNotification.publish(this,1,state);
                 engine = sessions == null ? new QueueEngine(this, reporter, () -> false) : new QueueEngine(this, reporter, () -> false, sessions);
                 engine.run(action, false);
             } finally {
                 running = false; QueueControl.lock.set(false); owns = false;
+                DownloadNotification.finish(this,3,SessionState.prefs(this).getString("state","Interrupted; queue preserved"));
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf();
                 WorkScheduler.recovery(this); WorkScheduler.plan(this, false);
             }

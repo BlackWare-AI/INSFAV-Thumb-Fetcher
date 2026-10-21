@@ -26,11 +26,13 @@ final class QueueEngine {
     void cancel(String state) { cancelledState = state; cancel(); }
     void cancel() { cancelled = true; ProfileProvider p = provider; if (p != null) p.cancel(); }
     private boolean interrupted() { return cancelled || stopped.getAsBoolean() || QueueControl.requested || Thread.currentThread().isInterrupted(); }
-    private void state(String value) { QueueControl.phase = value; settings.edit().putString("state", value).apply(); reporter.update(value); }
+    private long lastSignal; private String lastState="";
+    private void state(String value) { long now=android.os.SystemClock.elapsedRealtime();if(value.equals(lastState)&&now-lastSignal<250)return;lastSignal=now;lastState=value;QueueControl.phase = value; settings.edit().putString("state", value).apply(); reporter.update(value); }
     private void block(String code) {
         SharedPreferences.Editor e = settings.edit().putString("blocked", code);
         if (code.startsWith("COOKIE_")) e.putString("sessionEvidence", "INVALID");
-        e.commit(); state("Paused: " + FailureText.label(code) + " (" + code + ")");
+        if(code.equals("RATE_LIMITED")&&settings.getLong("retryAt",0)<=System.currentTimeMillis())e.putBoolean("armed",false).putBoolean("userPaused",true);
+        e.commit(); state(code.equals("RATE_LIMITED")?"Rate Limited":"Paused: " + FailureText.label(code) + " (" + code + ")");
     }
     private static final class Result {
         final String user; byte[] bytes; ProfileProvider.Failure failure;
@@ -42,13 +44,16 @@ final class QueueEngine {
         String generation = settings.getString("cookieGeneration", "");
         boolean hoursEnded = false, blocked = false;
         try (QueueStore queue = new QueueStore(context)) {
-            // No hidden preflight or homepage identity test. Explicit server restrictions still pause.
+            queue.recoverInterrupted();
+            if ("verify_index".equals(action)) { state("Starting — Verifying thumbnail index"); OutputFolder checked=new OutputFolder(context,settings.getString("tree",""),queue,true);state("Paused — Thumbnail index verified");return; }
             if (System.currentTimeMillis() < settings.getLong("retryAt", 0)) { block("RATE_LIMITED"); return; }
-            if ("missing".equals(action)) queue.reset(queue.users(false));
+            if ("RATE_LIMITED".equals(settings.getString("blocked", ""))) settings.edit().putString("blocked", "").commit();
+            if ("missing".equals(action)) queue.prepareMissing();
             else if ("failed".equals(action)) queue.reset(queue.retryable());
             RunPolicy policy = RunPolicy.read(settings);
             if (!policy.contains(ZonedDateTime.now())) { state("Paused — Outside Schedule"); return; }
-            OutputFolder output = new OutputFolder(context, settings.getString("tree", ""));
+            state("Starting — Loading persistent queue and thumbnail index");
+            OutputFolder output = new OutputFolder(context, settings.getString("tree", ""), queue, "verify_index".equals(action));
             List<String> targets = queue.pending();
             int limit = single ? 1 : capacity.applyAsInt(ConcurrencyPolicy.validate(settings.getInt("concurrentWebViews", 1)));
             QueueControl.effectiveViews = limit; QueueControl.memoryPressure = false;
@@ -68,8 +73,8 @@ final class QueueEngine {
                     QueueControl.memoryPressure = false; log.log("POOL", "MEMORY_PRESSURE_LIMIT", limit);
                     android.os.Debug.MemoryInfo memory = new android.os.Debug.MemoryInfo(); android.os.Debug.getMemoryInfo(memory); log.log("MEMORY", "APP_PSS_KIB", memory.getTotalPss());
                 }
-                if (!policy.contains(ZonedDateTime.now())) hoursEnded = true;
                 long next = Math.max(settings.getLong("nextRequestAt", 0), settings.getLong("retryAt", 0));
+                if (!policy.contains(ZonedDateTime.now())) hoursEnded=true;
                 if (provider.blockingFailure() == null && !hoursEnded && index < targets.size() && inFlight.size() < limit && (!single || launches == 0)) {
                     String user = targets.get(index), filename = Identity.outputFilename(user);
                     // Existing-file checks do not consume a network launch slot.
@@ -78,7 +83,7 @@ final class QueueEngine {
                         queue.mark(user, "EXISTING", "VALID_WEBP"); index++; state("Checking existing thumbnails"); continue;
                     }
                     if (System.currentTimeMillis() >= next) {
-                        index++; launches++; inFlight.add(user);
+                        if(!queue.claim(user)){index++;continue;}index++; launches++; inFlight.add(user);QueueControl.activeAccounts=inFlight.size();QueueControl.peakAccounts=Math.max(QueueControl.peakAccounts,QueueControl.activeAccounts);
                         QueueControl.current = user;
                         // Reserve before dispatch: delay controls profile starts across ALL workers.
                         settings.edit().putLong("nextRequestAt", System.currentTimeMillis() + policy.delayMillis()).commit();
@@ -99,6 +104,7 @@ final class QueueEngine {
                 if (ready == null) continue;
                 Result result = ready.get();
                 if (!inFlight.remove(result.user)) continue; // A result is committed once by this coordinator.
+                QueueControl.activeAccounts=inFlight.size();
                 if (result.failure == null) {
                     boolean wrote = output.write(Identity.outputFilename(result.user), result.bytes);
                     result.bytes = null;
@@ -109,14 +115,15 @@ final class QueueEngine {
                     ProfileProvider.Failure error = result.failure;
                     if(error.code.equals("OUTSIDE_WORKING_HOURS")){hoursEnded=true;continue;}
                     if (error.code.equals("REQUEST_CANCELLED")) continue; // Leave pending for a manual resume.
-                    queue.mark(result.user, FailurePolicy.skip(error.code) ? "SKIPPED" : "FAILED", error.code);
+                    queue.attempted(result.user);
+                    queue.mark(result.user, FailurePolicy.skip(error.code) ? "SKIPPED" : error.retryAt>0?"RETRY_LATER":"FAILED", error.code);
                     log.log("PROFILE", error.code, error.http);
-                    if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).commit();
+                    if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).putInt("blockedHttp",error.http).commit();
                     if (FailurePolicy.pause(error)) { block(error.code); blocked = true; break; }
                     if (error.code.equals("WEBVIEW_RENDERER_GONE")) QueueControl.memoryPressure = true;
                 }
                 settings.edit().putLong("nextRequestAt", Math.max(settings.getLong("nextRequestAt", 0), System.currentTimeMillis() + policy.delayMillis())).commit();
-                finished++;
+                finished++;long elapsed=Math.max(1,android.os.SystemClock.elapsedRealtime()-started);QueueControl.completedPerMinute=finished*60000.0/elapsed;
                 QueueControl.etaSeconds = finished >= 3 ? Math.max(0, targets.size() - index + inFlight.size()) * (android.os.SystemClock.elapsedRealtime() - started) / finished / 1000 : -1;
                 state(hoursEnded ? "Finishing active profiles; working hours ended" : "Downloading");
             }
@@ -133,7 +140,7 @@ final class QueueEngine {
             ProfileProvider current = provider; if (current != null) current.cancel();
             if (workers != null) { workers.shutdownNow(); try { workers.awaitTermination(5, TimeUnit.SECONDS); } catch (InterruptedException error) { Thread.currentThread().interrupt(); } }
             if (current != null) current.close();
-            QueueControl.activeViews = 0; QueueControl.current = ""; QueueControl.etaSeconds = -1;
+            QueueControl.activeViews = 0; QueueControl.activeAccounts=0; QueueControl.current = ""; QueueControl.etaSeconds = -1;
             if (QueueControl.requested) state(QueueControl.requestedState);
         }
     }
