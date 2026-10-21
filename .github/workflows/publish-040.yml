@@ -1,0 +1,64 @@
+name: Publish INSFAV Thumb Fetcher 0.4.0
+
+on:
+  push:
+    branches:
+      - development/0.4.0
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: contains(github.event.head_commit.message, 'PUBLISH_040_ONCE')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tools/profile-probe.test.cjs
+      - run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
+      - name: Create v0.4.0 tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          apk_size=$(stat -c%s "$apk")
+          apk_sha=$(sha256sum "$apk" | cut -d ' ' -f 1)
+          cat > release-notes.md <<EOF
+          **JSON backup compatibility: This app reads .json backup files from SamMods InstaPro version 15.30 and earlier.**
+
+          INSFAV Thumb Fetcher is an independent Android companion that reads Instagram usernames from a selected INSFAV JSON backup, uses the user's saved Instagram session where required, discovers account-matched profile photos, and saves 256 × 256 WebP thumbnails under .thumbnails/<username>.webp. It does not modify the JSON backup.
+
+          ### What is included
+          - WebView-based Instagram profile-photo retrieval using the user's own session cookies.
+          - JSON account import and deduplication.
+          - Center-cropped 256 × 256 WebP output at quality 78; existing valid 128 × 128 files remain valid and are not automatically changed.
+          - A durable queue with pause/resume, stop, retry, pacing, working hours, background processing and a reusable WebView pool (default concurrency 1; device memory may lower the effective limit).
+          - Missing or unavailable profile pages are skipped with a reason. Login challenges, CAPTCHA, HTTP 429 and explicit access restrictions pause new work.
+          - Optional in-memory viewing of a larger available profile image; it is not persisted as an HD file.
+
+          ### Quick start
+          1. Install the APK and open the app.
+          2. Select the SamMods InstaPro .json backup and choose a writable output parent folder.
+          3. Paste and save Instagram cookies if profiles require a signed-in session. Cookie values are encrypted in app-private storage.
+          4. Set minimum/maximum delay and working hours. Leave Concurrent WebViews at 1 unless the device can handle a larger pool.
+          5. Save settings and tap Start Missing. Valid existing thumbnails are kept. Pause/Resume and Stop preserve the unfinished queue; Retry Failed retries failed or skipped accounts.
+
+          ### Build and validation
+          Attached debug APK: ${apk_size} bytes, SHA-256: ${apk_sha}.
+          The APK is development-signed; no signing key is included. Automated checks cover unit tests, lint, build and offline WebView fixtures. These checks do not verify live Instagram access or physical-device stability. Instagram page/photo availability depends on current session and access rules. A 404 or unavailable page is not treated as proof that an account was deleted.
+
+          If Android refuses to install over an older development build signed with a different certificate, uninstall the older helper first. This removes app-private cookies, settings and queue; the JSON backup and thumbnails in the selected external folder remain unaffected.
+          EOF
+          gh release create v0.4.0 "$apk" --title "INSFAV Thumb Fetcher 0.4.0" --notes-file release-notes.md --target "$GITHUB_SHA"

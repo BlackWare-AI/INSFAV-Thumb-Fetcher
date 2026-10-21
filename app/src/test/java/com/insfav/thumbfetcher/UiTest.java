@@ -16,7 +16,7 @@ public class UiTest {
     @Test public void cookiesAreInlineNotAFilePickerAndEditorIsNotSaved() {
         QueueControl.lock.set(false);
         ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).create().start().resume(); MainActivity a=controller.get();
-        View root=a.getWindow().getDecorView(); Button select=(Button)find(root,"Select Cookies"); assertNotNull(select); select.performClick();
+        View root=a.getWindow().getDecorView(); assertNull(find(root,"Test Cookies")); assertNull(find(root,"Test One Profile")); assertNotNull(find(root,"Concurrent WebViews (1–30)")); Button select=(Button)find(root,"Select Cookies"); assertNotNull(select); select.performClick();
         EditText editor=findCookieEditor(root); assertNotNull(editor); assertFalse(editor.isSaveEnabled()); assertEquals(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS,editor.getImportantForAutofill());
         assertTrue((a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0); editor.setText("sessionid=TEST_SESSION"); assertNull(org.robolectric.Shadows.shadowOf(a).getNextStartedActivity());
         controller.pause().stop(); assertEquals("",editor.getText().toString()); controller.destroy();
@@ -34,6 +34,13 @@ public class UiTest {
         assertTrue(SessionState.prefs(context).getBoolean("userPaused",false));
         stop.performClick(); assertFalse(SessionState.prefs(context).getBoolean("armed",true));
         controller.pause().stop().destroy();
+    }
+    @Test public void transientViewerReleasesOldAndClosedBitmaps() {
+        PhotoViewer.ZoomImage image = new PhotoViewer.ZoomImage(RuntimeEnvironment.getApplication());
+        android.graphics.Bitmap first = android.graphics.Bitmap.createBitmap(128,128,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Bitmap source = android.graphics.Bitmap.createBitmap(640,480,android.graphics.Bitmap.Config.ARGB_8888);
+        image.replace(first); image.replace(source); assertTrue(first.isRecycled()); assertSame(source,image.bitmap);
+        image.replace(null); assertTrue(source.isRecycled()); assertNull(image.bitmap);
     }
     private static View find(View v,String text) {
         if(v instanceof TextView&&((TextView)v).getText().toString().equals(text))return v;

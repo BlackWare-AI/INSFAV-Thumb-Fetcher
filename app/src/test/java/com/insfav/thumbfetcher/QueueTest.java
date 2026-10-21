@@ -31,7 +31,7 @@ public class QueueTest {
         store.mark("example", "SKIPPED", "PROFILE_NOT_FOUND_OR_UNAVAILABLE");
         store.close(); store = new QueueStore(context);
         assertEquals(Integer.valueOf(1), store.counts().get("SKIPPED"));
-        assertTrue(store.users(true).isEmpty()); assertTrue(store.failures().isEmpty());
+        assertTrue(store.users(true).isEmpty()); assertEquals(Integer.valueOf(1),store.failures().get("PROFILE_NOT_FOUND_OR_UNAVAILABLE"));
         assertEquals(Collections.singletonList("valid_2"), store.preflightCandidates());
         store.reset(store.users(false));
         assertEquals(Arrays.asList("example", "valid_2"), store.pending());

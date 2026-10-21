@@ -5,6 +5,7 @@ interface ProfileProvider extends AutoCloseable {
     @Override default void close() { }
     byte[] fetch(String username) throws Failure;
     void cancel();
+    default Failure blockingFailure() { return null; }
     final class Failure extends Exception {
         final String code;
         final int http;

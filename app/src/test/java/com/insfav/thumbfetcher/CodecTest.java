@@ -17,10 +17,15 @@ public class CodecTest {
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888); bitmap.eraseColor(Color.RED);
         ByteArrayOutputStream output = new ByteArrayOutputStream(); bitmap.compress(Bitmap.CompressFormat.PNG, 100, output); bitmap.recycle(); return output.toByteArray();
     }
+    static byte[] legacy() {
+        Bitmap bitmap = Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888); bitmap.eraseColor(Color.BLUE);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(); bitmap.compress(Bitmap.CompressFormat.WEBP,78,out); bitmap.recycle(); return out.toByteArray();
+    }
+    @Test public void keepsLegacy128WebpValid() { assertTrue(ThumbnailCodec.valid(legacy())); }
     @Test public void convertsLandscapePortraitAndSmallImages() throws Exception {
         for (int[] shape : new int[][]{{900, 300}, {300, 900}, {24, 24}}) {
             byte[] bytes = ThumbnailCodec.convert(png(shape[0], shape[1])); assertTrue(ThumbnailCodec.valid(bytes));
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length); assertEquals(128, bitmap.getWidth()); assertEquals(128, bitmap.getHeight()); bitmap.recycle();
+            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length); assertEquals(256, bitmap.getWidth()); assertEquals(256, bitmap.getHeight()); bitmap.recycle();
         }
     }
     @Test public void rejectsBrokenTruncatedAndWrongSizeOutput() throws Exception {

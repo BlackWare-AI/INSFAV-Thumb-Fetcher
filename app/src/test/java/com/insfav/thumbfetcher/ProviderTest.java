@@ -16,6 +16,11 @@ import static org.junit.Assert.*;
 public class ProviderTest {
     static final String IMAGE = "https://scontent.example.cdninstagram.com/v/photo.jpg";
     static String page(String username, String flag) { return "<script type='application/json'>{\"user\":{\"username\":\"" + username + "\",\"id\":\"123\",\"has_anonymous_profile_picture\":" + flag + ",\"profile_pic_url\":\"" + IMAGE + "\"}}</script>"; }
+    @Test public void imageCdn403DoesNotInvalidateTheInstagramSession() throws Exception {
+        PublicProfileProvider provider = new PublicProfileProvider(url -> new Stub(url,403,""));
+        try { provider.download(new URL(IMAGE)); fail(); }
+        catch (ProfileProvider.Failure error) { assertEquals("DOWNLOAD_FAILED",error.code); assertEquals(403,error.http); assertFalse(error.pause); }
+    }
     @Test public void acceptsOnlyBoundExplicitNonDefaultPhoto() throws Exception { assertEquals(IMAGE, PublicProfileProvider.photo(page("Example", "false"), "example").toString()); }
     @Test public void rejectsOgImageWrongAccountAndAnonymous() throws Exception {
         for (String html : new String[]{"<meta property='og:image' content='" + IMAGE + "'>", page("other", "false"), page("example", "true"), page("example", "null"), page("example", "\"false\"")}) {

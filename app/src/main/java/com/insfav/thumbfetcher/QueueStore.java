@@ -41,13 +41,18 @@ final class QueueStore extends SQLiteOpenHelper {
         try (Cursor cursor = getReadableDatabase().rawQuery("SELECT username FROM accounts WHERE eligible=1 AND status='PENDING' ORDER BY position", null)) { while (cursor.moveToNext()) users.add(cursor.getString(0)); }
         return users;
     }
+    List<String> retryable() {
+        ArrayList<String> users = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT username FROM accounts WHERE status IN ('FAILED','SKIPPED') ORDER BY position", null)) { while (c.moveToNext()) users.add(c.getString(0)); }
+        return users;
+    }
     void reset(List<String> users) {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try { db.execSQL("UPDATE accounts SET eligible=0"); for (String user : users) { mark(user, "PENDING", ""); ContentValues v = new ContentValues(); v.put("eligible", 1); db.update("accounts", v, "username=?", new String[]{user}); } db.setTransactionSuccessful(); } finally { db.endTransaction(); }
     }
     Map<String, Integer> failures() {
         Map<String, Integer> result = new LinkedHashMap<>();
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status='FAILED' GROUP BY code ORDER BY COUNT(*) DESC", null)) { while(c.moveToNext()) result.put(c.getString(0), c.getInt(1)); }
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status IN ('FAILED','SKIPPED') GROUP BY code ORDER BY COUNT(*) DESC", null)) { while(c.moveToNext()) result.put(c.getString(0), c.getInt(1)); }
         return result;
     }
     Map<String, Integer> counts() {
