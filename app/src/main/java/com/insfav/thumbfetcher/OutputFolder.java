@@ -218,6 +218,8 @@ final class OutputFolder {
             if (committed == null) throw new IOException("ATOMIC_RENAME_UNSUPPORTED");
             OutputIndexObserver.own(committed);
             files.remove(filename + ".part"); files.put(filename, committed); exactName(committed, filename);
+            // The catalog-backed lookup used by valid() must see this newly committed URI.
+            if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);catalog.image(new QueueStore.Image(user,committed.toString(),filename,bytes.length,bounds.outWidth,bounds.outHeight,System.currentTimeMillis(),true));}
             if (!valid(filename)) throw new IOException("OUTPUT_FINAL_VERIFY_FAILED");
         } catch (IOException | SecurityException error) {
             // If access is still available, restore now. Otherwise next open recovers the backup.

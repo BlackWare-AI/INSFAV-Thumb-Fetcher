@@ -124,7 +124,7 @@ final class QueueStore extends SQLiteOpenHelper {
     int attempts(String user){try(Cursor c=getReadableDatabase().rawQuery("SELECT attempts FROM accounts WHERE username=?",new String[]{user})){return c.moveToFirst()?c.getInt(0):0;}}
     Map<String,Integer> failures(){
         Map<String,Integer> out=new LinkedHashMap<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status IN ('FAILED','RETRY_LATER') GROUP BY code ORDER BY COUNT(*) DESC",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status IN ('FAILED','SKIPPED','RETRY_LATER') GROUP BY code ORDER BY COUNT(*) DESC",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}
         return out;
     }
     Map<String,Integer> counts(){Map<String,Integer> out=new HashMap<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT status,COUNT(*) FROM accounts GROUP BY status",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}return out;}

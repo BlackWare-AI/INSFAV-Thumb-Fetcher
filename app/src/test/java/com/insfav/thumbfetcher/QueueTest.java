@@ -57,6 +57,7 @@ public class QueueTest {
     }
 
     @Test public void interruptedWebViewClaimIsReturnedToPendingOnRestart() {
+        store.mark("valid_2", "SUCCESS", "VALID_WEBP");
         assertTrue(store.claim("example"));
         store.close(); store = new QueueStore(context);
         store.recoverInterrupted();
@@ -64,6 +65,7 @@ public class QueueTest {
     }
 
     @Test public void outputChangesInvalidateOnlyKnownRowsAndUnknownChangesRequestVerification() {
+        store.mark("valid_2", "SUCCESS", "VALID_WEBP");
         store.image(new QueueStore.Image("example","content://provider/item-1","example.webp",512,256,256,1,true));
         store.mark("example","SUCCESS","VALID_WEBP");
         store.recordOutputChange("content://provider/item-1");
