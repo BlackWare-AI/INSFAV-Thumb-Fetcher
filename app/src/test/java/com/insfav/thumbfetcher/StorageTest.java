@@ -52,10 +52,10 @@ public class StorageTest {
         try { output.write(name, ThumbnailCodec.convert(CodecTest.png(140, 140))); fail(); } catch (IOException expected) { }
         assertFalse(output.valid(name)); assertTrue(new File(provider.root, ".thumbnails/" + name + ".part").isFile());
     }
-    @Test public void legacyRefreshRestoresOriginalWhenCommitRenameFails() throws Exception {
+    @Test public void validLegacyImageIsNeverOverwritten() throws Exception {
         OutputFolder output = new OutputFolder(context, tree.toString()); byte[] original = CodecTest.legacy(); String name = "synthetic.webp";
         output.write(name, original); provider.rejectCommit = true;
-        try { output.write(name, ThumbnailCodec.convert(CodecTest.png(320,320)), true); fail(); } catch (IOException expected) { }
+        assertFalse(output.write(name, ThumbnailCodec.convert(CodecTest.png(320,320))));
         provider.rejectCommit = false; OutputFolder reopened = new OutputFolder(context,tree.toString()); reopened.recover(name);
         assertTrue(reopened.valid(name)); assertArrayEquals(original,reopened.thumbnail(name));
     }

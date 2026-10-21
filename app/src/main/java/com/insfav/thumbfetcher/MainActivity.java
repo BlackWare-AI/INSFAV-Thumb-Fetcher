@@ -19,6 +19,7 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private QueueStore queue;
+    private SettingsBackupUi settingsBackup;
     private Diagnostics log;
     private SharedPreferences settings;
     private TextView stats, status, jsonLabel, folderLabel;
@@ -37,6 +38,17 @@ public final class MainActivity extends Activity {
     private final Runnable refresh = new Runnable() { @Override public void run() { update(); handler.postDelayed(this, 750); } };
     @Override public void onCreate(Bundle state) {
         super.onCreate(state); queue = new QueueStore(this); log = new Diagnostics(this); settings = getSharedPreferences("settings", MODE_PRIVATE);
+        settingsBackup=new SettingsBackupUi(this,io,new SettingsBackupUi.Host(){
+            public String export(char[] pass)throws Exception{return SettingsArchive.export(MainActivity.this,pass,new org.json.JSONObject().put("tree",settings.getString("tree","")));}
+            public org.json.JSONObject inspect(String raw,char[] pass)throws Exception{org.json.JSONObject data=SettingsArchive.inspect(MainActivity.this,raw,pass),extra=data.getJSONObject("extra");if(extra.length()!=1||!(extra.get("tree") instanceof String))throw new IOException("Invalid settings");return data;}
+            public void apply(org.json.JSONObject data)throws Exception{
+                if(busy||launchPending||QueueControl.lock.get())throw new IOException("Stop the current operation first.");
+                SettingsArchive.apply(MainActivity.this,data);String tree=data.getJSONObject("extra").getString("tree");
+                for(UriPermission grant:getContentResolver().getPersistedUriPermissions())if(grant.getUri().toString().equals(tree)&&grant.isReadPermission()&&grant.isWritePermission())settings.edit().putString("tree",tree).commit();
+                handler.post(()->{minimum.setText(String.valueOf(settings.getInt("minimum",15)));maximum.setText(String.valueOf(settings.getInt("maximum",30)));startTime.setText(RunPolicy.time(settings.getInt("startMinute",120)));endTime.setText(RunPolicy.time(settings.getInt("endMinute",420)));concurrentViews.setText(String.valueOf(settings.getInt("concurrentWebViews",1)));background.setChecked(settings.getBoolean("background",false));update();});
+            }
+            public void message(String text){handler.post(()->MainActivity.this.message(text));}
+        });
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(Color.BLACK);
         LinearLayout layout = new LinearLayout(this); layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(dp(20), dp(16), dp(20), dp(20)); scroll.addView(layout);
         scroll.setOnApplyWindowInsetsListener((view, insets) -> { view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets.consumeSystemWindowInsets(); });
@@ -63,15 +75,14 @@ public final class MainActivity extends Activity {
         stop = button(layout, "Stop", view -> QueueControl.pause(this, true));
         button(layout, "More", view -> {
             PopupMenu menu = new PopupMenu(this, view);
-            menu.getMenu().add("Refresh 128 × 128 Thumbnails").setOnMenuItemClickListener(item -> {
-                new AlertDialog.Builder(this).setMessage("Download fresh source photos for existing 128 × 128 thumbnails? Other valid thumbnails are preserved.").setPositiveButton("Refresh", (d, which) -> begin("refresh_legacy")).setNegativeButton("Cancel", null).show(); return true;
-            });
             menu.getMenu().add("Open Profile Photo").setOnMenuItemClickListener(item -> {
                 EditText user = new EditText(this); user.setSingleLine(true); user.setHint("Imported username");
                 new AlertDialog.Builder(this).setTitle("Open Profile Photo").setView(user).setPositiveButton("Open", (d, which) -> openPhoto(Identity.normalize(user.getText().toString()))).setNegativeButton("Cancel", null).show(); return true;
             });
             menu.getMenu().add("Retry Failed").setOnMenuItemClickListener(item -> { begin("failed"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
+            menu.getMenu().add("Export All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(true);return true;});
+            menu.getMenu().add("Import All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(false);return true;});
             menu.show();
         });
         setContentView(scroll);
@@ -154,7 +165,7 @@ public final class MainActivity extends Activity {
         } catch (IllegalArgumentException e) { message("Use 1–30 WebViews, 1–86400 seconds, maximum ≥ minimum, and different HH:mm start/end times"); return false; }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
-        super.onActivityResult(request, result, data); if (result != RESULT_OK || data == null || data.getData() == null) return;
+        super.onActivityResult(request, result, data); if(settingsBackup.result(request,result,data))return; if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         if (request != 12 && (QueueControl.lock.get() || busy || launchPending)) { message("Stop the current operation first"); return; }
         if (request == 10) {
@@ -218,7 +229,7 @@ public final class MainActivity extends Activity {
         else if (detail.equals("Downloading") || detail.equals("Waiting") || detail.equals("Writing thumbnail") || detail.equals("Checking existing thumbnails")) detail = "Interrupted; tap Resume to continue";
         StringBuilder failureSummary = new StringBuilder();
         for (Map.Entry<String, Integer> failure : queue.failures().entrySet()) failureSummary.append("\n").append(FailureText.label(failure.getKey())).append(": ").append(failure.getValue()).append(" (").append(failure.getKey()).append(")");
-        status.setText(detail + failureSummary);
+        status.setText(ScheduleStatus.text(settings,QueueControl.lock.get(),QueueControl.activeViews)+"\n"+detail + failureSummary);
         cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;

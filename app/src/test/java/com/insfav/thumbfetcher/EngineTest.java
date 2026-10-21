@@ -97,18 +97,18 @@ public class EngineTest {
         assertFalse(worker.isAlive()); assertEquals(10,queue.pending().size()); assertEquals("Paused",prefs.getString("state",""));
         QueueControl.requested=false; engine(fake(user->pixels)).run("resume",false); assertEquals(Integer.valueOf(10),queue.counts().get("SUCCESS"));
     }
-    @Test public void existingValidFilesArePreservedAndOnlyLegacyRefreshOverwrites() throws Exception {
+    @Test public void existingValidFilesArePreservedAcrossMissingAndRetry() throws Exception {
         OutputFolder output=new OutputFolder(storage.context,storage.tree.toString()); byte[] old=CodecTest.legacy(); output.write("synthetic_0.webp",old);
         engine(fake(user->pixels)).run("missing",false); assertEquals(Integer.valueOf(1),queue.counts().get("EXISTING"));
         assertArrayEquals(old,new OutputFolder(storage.context,storage.tree.toString()).thumbnail("synthetic_0.webp"));
-        AtomicInteger calls=new AtomicInteger(); engine(fake(user->{calls.incrementAndGet();return pixels;})).run("refresh_legacy",false);
-        assertEquals(1,calls.get()); assertFalse(new OutputFolder(storage.context,storage.tree.toString()).legacy("synthetic_0.webp"));
+        AtomicInteger calls=new AtomicInteger(); engine(fake(user->{calls.incrementAndGet();return pixels;})).run("missing",false);
+        assertEquals(0,calls.get()); assertArrayEquals(old,new OutputFolder(storage.context,storage.tree.toString()).thumbnail("synthetic_0.webp"));
     }
     @Test public void revokedStorageAndOutsideHoursStopBeforeFetch() {
         prefs.edit().putString("tree","").commit(); engine(fake(user->{throw new AssertionError();})).run("resume",false);
         assertEquals("STORAGE_PERMISSION_LOST",prefs.getString("blocked",""));
         int minute=LocalTime.now().getHour()*60+LocalTime.now().getMinute(); prefs.edit().putInt("startMinute",(minute+60)%1440).putInt("endMinute",(minute+120)%1440).commit();
-        engine(fake(user->{throw new AssertionError();})).run("resume",false); assertEquals("Waiting for working hours",prefs.getString("state",""));
+        engine(fake(user->{throw new AssertionError();})).run("resume",false); assertEquals("Paused — Outside Schedule",prefs.getString("state",""));
     }
     @Test public void defaultAndMemoryReductionNeverIncreaseParallelism() {
         assertEquals(1,prefs.getInt("concurrentWebViews",1));
