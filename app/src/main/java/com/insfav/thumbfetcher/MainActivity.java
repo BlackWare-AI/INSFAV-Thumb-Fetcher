@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
                 if(busy||launchPending||QueueControl.lock.get())throw new IOException("Stop the current operation first.");
                 SettingsArchive.apply(MainActivity.this,data);String tree=data.getJSONObject("extra").getString("tree");
                 for(UriPermission grant:getContentResolver().getPersistedUriPermissions())if(grant.getUri().toString().equals(tree)&&grant.isReadPermission()&&grant.isWritePermission())settings.edit().putString("tree",tree).commit();
+                OutputIndexObserver.attach(MainActivity.this,tree);
                 handler.post(()->{minimum.setText(String.valueOf(settings.getInt("minimum",15)));maximum.setText(String.valueOf(settings.getInt("maximum",30)));startTime.setText(RunPolicy.time(settings.getInt("startMinute",120)));endTime.setText(RunPolicy.time(settings.getInt("endMinute",420)));concurrentViews.setText(String.valueOf(settings.getInt("concurrentWebViews",1)));background.setChecked(settings.getBoolean("background",false));update();});
             }
             public void message(String text){handler.post(()->MainActivity.this.message(text));}
@@ -192,6 +193,7 @@ public final class MainActivity extends Activity {
                 try {
                     getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); new OutputFolder(this, uri.toString(), queue, false);
                     String old = settings.getString("tree", ""); settings.edit().putString("tree", uri.toString()).putString("state", "Output folder ready").commit();
+                    OutputIndexObserver.attach(this,uri.toString());
                     if (!old.isEmpty() && !old.equals(uri.toString())) try { getContentResolver().releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); } catch (SecurityException ignored) { }
                     log.log("STORAGE", "SELECTED", 0);
                 } catch (Exception errorValue) { error = "Output folder unavailable; select a writable parent folder"; log.log("STORAGE", "SELECT_FAILED", 0); }

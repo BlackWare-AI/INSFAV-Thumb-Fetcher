@@ -63,6 +63,16 @@ public class QueueTest {
         assertEquals(Collections.singletonList("example"), store.pending());
     }
 
+    @Test public void outputChangesInvalidateOnlyKnownRowsAndUnknownChangesRequestVerification() {
+        store.image(new QueueStore.Image("example","content://provider/item-1","example.webp",512,256,256,1,true));
+        store.mark("example","SUCCESS","VALID_WEBP");
+        store.recordOutputChange("content://provider/item-1");
+        assertTrue(store.image("example").needsCheck);
+        assertEquals(Collections.singletonList("example"),store.pending());
+        store.recordOutputChange("content://provider/unindexed");
+        assertEquals("1",store.meta("verificationRecommended"));
+    }
+
     @Test public void notificationProgressIncludesRetryLaterAndReportsRealCompletion() {
         Map<String,Integer> counts=new HashMap<>();counts.put("SUCCESS",2);counts.put("EXISTING",1);counts.put("FAILED",1);counts.put("SKIPPED",1);counts.put("RETRY_LATER",2);
         DownloadNotification.Progress progress=new DownloadNotification.Progress(counts,"Downloading","");

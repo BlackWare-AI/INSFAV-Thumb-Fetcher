@@ -38,7 +38,7 @@ final class OutputFolder {
         }
         catalogScope = tree.toString() + "\n" + DocumentsContract.getDocumentId(folder);
         if (catalog == null) files.putAll(children(folder));
-        else if (verify || !("1".equals(catalog.meta("ready")) && catalogScope.equals(catalog.meta("folder")))) indexCatalog(catalog.users(false));
+        else if (verify || "1".equals(catalog.meta("verificationRecommended")) || !("1".equals(catalog.meta("ready")) && catalogScope.equals(catalog.meta("folder")))) indexCatalog(catalog.users(false));
         else for (String user : catalog.users(false)) if (catalog.image(user) == null) catalog.image(new QueueStore.Image(user, "", user + ".webp", 0, 0, 0, 0, false));
     }
 
@@ -70,7 +70,7 @@ final class OutputFolder {
         }
         catalog.clearMissingImages(known);
         for(String user:users)if(!known.contains(user))catalog.image(new QueueStore.Image(user,"",user+".webp",0,0,0,0,false));
-        catalog.meta("folder",catalogScope);catalog.meta("ready","1");catalog.settleImages();
+        catalog.meta("folder",catalogScope);catalog.meta("ready","1");catalog.meta("verificationRecommended","0");catalog.settleImages();
     }
 
     private Uri lookup(String filename) throws IOException {
@@ -78,7 +78,18 @@ final class OutputFolder {
         String user=Identity.normalize(filename.substring(0,filename.length()-5));
         QueueStore.Image image=catalog.image(user);
         if(image==null)return null;
-        if(image.needsCheck){catalog.image(new QueueStore.Image(user,image.uri,image.name,image.size,image.width,image.height,image.modified,false));return null;}
+        if(image.needsCheck){
+            if(image.uri.isEmpty())return null;
+            Uri candidate=Uri.parse(image.uri);
+            try {
+                byte[] bytes=read(resolver.openInputStream(candidate));boolean readable=decodableWebp(bytes);
+                android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+                QueueStore.Image checked=new QueueStore.Image(user,image.uri,image.name,bytes.length,bounds.outWidth,bounds.outHeight,image.modified,readable);catalog.image(checked);
+                if(!readable){catalog.requeueLost(user);return null;}
+                files.put(filename,candidate);return candidate;
+            }catch(FileNotFoundException missing){catalog.image(new QueueStore.Image(user,"",filename,0,0,0,0,false));catalog.requeueLost(user);return null;}
+            catch(IOException corrupt){if("OUTPUT_SIZE_REJECTED".equals(corrupt.getMessage())){catalog.image(new QueueStore.Image(user,image.uri,image.name,image.size,0,0,image.modified,false));catalog.requeueLost(user);return null;}throw corrupt;}
+        }
         if(image.uri.isEmpty())return null;
         Uri uri=Uri.parse(image.uri);files.put(filename,uri);return uri;
     }
@@ -145,18 +156,21 @@ final class OutputFolder {
         Uri backup = files.get(filename + ".bak"); if(backup==null&&catalog!=null)backup=findExact(filename+".bak");
         if (backup != null) {
             if (valid(filename)) {
+                OutputIndexObserver.own(backup);
                 if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
             } else {
                 Uri bad = files.remove(filename);
-                if (bad != null && !DocumentsContract.deleteDocument(resolver, bad)) throw new IOException("OUTPUT_RESTORE_FAILED");
+                if (bad != null) { OutputIndexObserver.own(bad); if (!DocumentsContract.deleteDocument(resolver, bad)) throw new IOException("OUTPUT_RESTORE_FAILED"); }
                 Uri restored = DocumentsContract.renameDocument(resolver, backup, filename);
                 if (restored == null) throw new IOException("OUTPUT_RESTORE_FAILED");
+                OutputIndexObserver.own(restored);
                 exactName(restored, filename); files.put(filename, restored);
             }
             files.remove(filename + ".bak");
         }
         Uri partial = files.get(filename + ".part"); if(partial==null&&catalog!=null)partial=findExact(filename+".part");
         if (partial != null) {
+            OutputIndexObserver.own(partial);
             if (!DocumentsContract.deleteDocument(resolver, partial)) throw new IOException("PARTIAL_CLEANUP_FAILED");
             files.remove(filename + ".part");
         }
@@ -177,6 +191,7 @@ final class OutputFolder {
         recover(filename);
         Uri pending = DocumentsContract.createDocument(resolver, folder, "application/octet-stream", filename + ".part");
         if (pending == null) throw new IOException("OUTPUT_CREATE_FAILED");
+        OutputIndexObserver.own(pending);
         files.put(filename + ".part", pending);
         exactName(pending, filename + ".part");
         try (OutputStream output = resolver.openOutputStream(pending, "wt")) {
@@ -190,9 +205,10 @@ final class OutputFolder {
                 try { backup = DocumentsContract.renameDocument(resolver, old, filename + ".bak"); }
                 catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
                 if (backup == null) throw new IOException("OUTPUT_BACKUP_FAILED");
+                OutputIndexObserver.own(backup);
                 files.remove(filename); files.put(filename + ".bak", backup); exactName(backup, filename + ".bak");
             } else {
-                if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename);
+                OutputIndexObserver.own(old);if (!DocumentsContract.deleteDocument(resolver, old)) throw new IOException("OUTPUT_REPLACE_FAILED"); files.remove(filename);
             }
         }
         try {
@@ -200,6 +216,7 @@ final class OutputFolder {
             try { committed = DocumentsContract.renameDocument(resolver, pending, filename); }
             catch (UnsupportedOperationException error) { throw new IOException("ATOMIC_RENAME_UNSUPPORTED", error); }
             if (committed == null) throw new IOException("ATOMIC_RENAME_UNSUPPORTED");
+            OutputIndexObserver.own(committed);
             files.remove(filename + ".part"); files.put(filename, committed); exactName(committed, filename);
             if (!valid(filename)) throw new IOException("OUTPUT_FINAL_VERIFY_FAILED");
         } catch (IOException | SecurityException error) {
@@ -208,6 +225,7 @@ final class OutputFolder {
             throw error;
         }
         if (backup != null) {
+            OutputIndexObserver.own(backup);
             if (!DocumentsContract.deleteDocument(resolver, backup)) throw new IOException("OUTPUT_BACKUP_CLEANUP_FAILED");
             files.remove(filename + ".bak");
         }
