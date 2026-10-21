@@ -70,7 +70,8 @@ public class QueueTest {
         store.mark("example","SUCCESS","VALID_WEBP");
         store.recordOutputChange("content://provider/item-1");
         assertTrue(store.image("example").needsCheck);
-        assertEquals(Collections.singletonList("example"),store.pending());
+        String state;try(android.database.Cursor c=store.getReadableDatabase().rawQuery("SELECT status||':'||eligible||':'||code FROM accounts WHERE username='example'",null)){state=c.moveToFirst()?c.getString(0):"MISSING";}
+        assertEquals("counts="+store.counts()+"; example="+state,Collections.singletonList("example"),store.pending());
         store.recordOutputChange("content://provider/unindexed");
         assertEquals("1",store.meta("verificationRecommended"));
     }
