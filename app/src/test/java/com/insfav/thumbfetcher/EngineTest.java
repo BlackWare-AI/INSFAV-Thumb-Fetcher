@@ -108,7 +108,7 @@ public class EngineTest {
         prefs.edit().putString("tree","").commit(); engine(fake(user->{throw new AssertionError();})).run("resume",false);
         assertEquals("STORAGE_PERMISSION_LOST",prefs.getString("blocked",""));
         int minute=LocalTime.now().getHour()*60+LocalTime.now().getMinute(); prefs.edit().putInt("startMinute",(minute+60)%1440).putInt("endMinute",(minute+120)%1440).commit();
-        engine(fake(user->{throw new AssertionError();})).run("resume",false); assertEquals("Waiting for working hours",prefs.getString("state",""));
+        engine(fake(user->{throw new AssertionError();})).run("resume",false); assertEquals("Paused — Outside Schedule",prefs.getString("state",""));
     }
     @Test public void defaultAndMemoryReductionNeverIncreaseParallelism() {
         assertEquals(1,prefs.getInt("concurrentWebViews",1));

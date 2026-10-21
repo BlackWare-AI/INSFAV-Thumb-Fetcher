@@ -24,7 +24,7 @@ final class CookieVault {
         }
         return (SecretKey)store.getKey(ALIAS, null);
     }); }
-    CookieVault(Context context, Keys keys) { file = new AtomicFile(new File(context.getFilesDir(), "fetcher-cookies.enc")); this.keys = keys; }
+    CookieVault(Context context, Keys keys) { file = new AtomicFile(new File(context.getFilesDir(), "cookies.enc")); this.keys = keys; }
     synchronized boolean configured() { return file.getBaseFile().isFile(); }
     synchronized void save(CookieJar jar) throws Exception {
         byte[] plain = jar.encode().getBytes(StandardCharsets.UTF_8); FileOutputStream output = null;
