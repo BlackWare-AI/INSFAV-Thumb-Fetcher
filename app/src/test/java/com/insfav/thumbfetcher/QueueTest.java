@@ -27,6 +27,15 @@ public class QueueTest {
         assertEquals(Arrays.asList("example", "valid_2"), store.users(false));
     }
     @Test public void unfinishedRowsRemainPendingAcrossProcessRestart() { store.mark("example", "EXISTING", "VALID_WEBP"); store.close(); store = new QueueStore(context); assertEquals(Collections.singletonList("valid_2"), store.pending()); }
+    @Test public void startMissingKeepsCompletedRowsClosedAndOnlyEnablesUnfinishedRows() {
+        store.mark("example", "SUCCESS", "VALID_WEBP");
+        store.mark("valid_2", "EXISTING", "VALID_WEBP");
+        store.getWritableDatabase().execSQL("UPDATE accounts SET eligible=0"); // Simulate a previous retry action's eligibility filter.
+        store.prepareMissing();
+        assertEquals("Start Missing must not requeue completed files", Integer.valueOf(1), store.counts().get("SUCCESS"));
+        assertEquals("Start Missing must not requeue completed files", Integer.valueOf(1), store.counts().get("EXISTING"));
+        assertTrue("No completed account should be sent through per-file validation again", store.pending().isEmpty());
+    }
     @Test public void unavailableIsPersistentSeparateAndExplicitlyRetryable() {
         store.mark("example", "SKIPPED", "PROFILE_NOT_FOUND_OR_UNAVAILABLE");
         store.close(); store = new QueueStore(context);
