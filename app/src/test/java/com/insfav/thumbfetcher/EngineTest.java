@@ -40,6 +40,7 @@ public class EngineTest {
     }
     @Test public void startsDirectlyWithoutCookieProofAndWrites256Webp() throws Exception {
         engine(fake(user -> pixels)).run("missing",false);
+        assertEquals("state="+prefs.getString("state","")+", blocked="+prefs.getString("blocked",""),"Completed",prefs.getString("state",""));
         assertEquals(Integer.valueOf(4),queue.counts().get("SUCCESS")); assertEquals("Completed",prefs.getString("state",""));
         byte[] bytes = new OutputFolder(storage.context,storage.tree.toString()).thumbnail("synthetic_0.webp");
         android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length);
