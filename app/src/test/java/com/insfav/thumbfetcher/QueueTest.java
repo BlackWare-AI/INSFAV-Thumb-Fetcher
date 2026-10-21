@@ -41,14 +41,14 @@ public class QueueTest {
         assertEquals(Arrays.asList("valid_2", "example"), store.preflightCandidates());
     }
 
-    @Test public void reimportingSameBackupPreservesDurableResultsAndOrder() {
+    @Test public void reimportingSameBackupPreservesDurableResultsAndOrder() throws Exception {
         store.mark("example", "SUCCESS", "VALID_WEBP");
         store.replace(ImportTest.parse(ImportTest.ARRAY));
         assertEquals(Collections.singletonList("valid_2"), store.pending());
         assertEquals(Arrays.asList("example", "valid_2"), store.users(false));
     }
 
-    @Test public void changedBackupRetainsMatchingRowsAndAddsOnlyNewAccounts() {
+    @Test public void changedBackupRetainsMatchingRowsAndAddsOnlyNewAccounts() throws Exception {
         store.mark("example", "SUCCESS", "VALID_WEBP");
         store.replace(ImportTest.parse("[{\"items\":[{\"pageId\":\"@example\"},{\"pageId\":\"new_user\"}]}]"));
         assertEquals(Arrays.asList("example", "new_user"), store.users(false));

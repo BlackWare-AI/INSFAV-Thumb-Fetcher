@@ -73,7 +73,6 @@ final class QueueEngine {
                     QueueControl.memoryPressure = false; log.log("POOL", "MEMORY_PRESSURE_LIMIT", limit);
                     android.os.Debug.MemoryInfo memory = new android.os.Debug.MemoryInfo(); android.os.Debug.getMemoryInfo(memory); log.log("MEMORY", "APP_PSS_KIB", memory.getTotalPss());
                 }
-                if (!policy.contains(ZonedDateTime.now())) hoursEnded = true;
                 long next = Math.max(settings.getLong("nextRequestAt", 0), settings.getLong("retryAt", 0));
                 if (!policy.contains(ZonedDateTime.now())) hoursEnded=true;
                 if (provider.blockingFailure() == null && !hoursEnded && index < targets.size() && inFlight.size() < limit && (!single || launches == 0)) {

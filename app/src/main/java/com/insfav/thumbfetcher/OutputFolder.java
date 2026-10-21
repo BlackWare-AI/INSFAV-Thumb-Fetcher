@@ -54,15 +54,15 @@ final class OutputFolder {
             if (!Identity.valid(user)) continue;
             Uri uri=item.getValue();
             QueueStore.Image previous=catalog.image(user);
-            boolean readable;
-            try { readable=ThumbnailCodec.valid(read(resolver.openInputStream(uri))); }
+            byte[] data=null;boolean readable;
+            try { data=read(resolver.openInputStream(uri));readable=decodableWebp(data); }
             catch (FileNotFoundException missing) { readable=false; }
             long size=-1, modified=0;
             try (Cursor c=resolver.query(uri,new String[]{DocumentsContract.Document.COLUMN_SIZE,DocumentsContract.Document.COLUMN_LAST_MODIFIED},null,null)) {
                 if(c!=null&&c.moveToFirst()){size=c.isNull(0)?-1:c.getLong(0);modified=c.isNull(1)?0:c.getLong(1);}
             }
-            int width=readable?256:0,height=readable?256:0;
-            if(readable){byte[] data=read(resolver.openInputStream(uri));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(data,0,data.length,bounds);width=bounds.outWidth;height=bounds.outHeight;}
+            int width=0,height=0;
+            if(readable){android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(data,0,data.length,bounds);width=bounds.outWidth;height=bounds.outHeight;}
             if(previous==null||!previous.uri.equals(uri.toString())||previous.size!=size||previous.modified!=modified||previous.readable!=readable||previous.width!=width||previous.height!=height)
                 catalog.image(new QueueStore.Image(user,uri.toString(),filename,size,width,height,modified,readable));
             if(!readable)catalog.mark(user,"PENDING","INVALID_LOCAL_THUMBNAIL");
@@ -81,6 +81,14 @@ final class OutputFolder {
         if(image.needsCheck){catalog.image(new QueueStore.Image(user,image.uri,image.name,image.size,image.width,image.height,image.modified,false));return null;}
         if(image.uri.isEmpty())return null;
         Uri uri=Uri.parse(image.uri);files.put(filename,uri);return uri;
+    }
+    private static boolean decodableWebp(byte[] bytes) {
+        if(bytes==null||bytes.length<20||bytes.length>ThumbnailCodec.MAX_OUTPUT||!"RIFF".equals(new String(bytes,0,4,java.nio.charset.StandardCharsets.US_ASCII))||!"WEBP".equals(new String(bytes,8,4,java.nio.charset.StandardCharsets.US_ASCII)))return false;
+        long size=0;for(int i=0;i<4;i++)size|=(long)(bytes[4+i]&255)<<(8*i);if(size+8!=bytes.length)return false;
+        android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+        if(!"image/webp".equals(bounds.outMimeType)||bounds.outWidth<1||bounds.outHeight<1||bounds.outWidth>16384||bounds.outHeight>16384||(long)bounds.outWidth*bounds.outHeight>40000000)return false;
+        android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inSampleSize=1;while(Math.max(bounds.outWidth,bounds.outHeight)/options.inSampleSize>512)options.inSampleSize*=2;
+        android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(bitmap==null)return false;bitmap.recycle();return true;
     }
     private Uri findExact(String name) throws IOException {
         Uri child=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getDocumentId(folder));
@@ -122,7 +130,11 @@ final class OutputFolder {
     }
     boolean valid(String filename) throws IOException {
         Uri file = lookup(filename); if (file == null) return false;
-        try { return ThumbnailCodec.valid(read(resolver.openInputStream(file))); }
+        try {
+            byte[] bytes=read(resolver.openInputStream(file));boolean valid=catalog==null?ThumbnailCodec.valid(bytes):decodableWebp(bytes);
+            if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);QueueStore.Image old=catalog.image(user);long modified=old==null?0:old.modified;catalog.image(new QueueStore.Image(user,file.toString(),filename,bytes.length,bounds.outWidth,bounds.outHeight,modified,valid));}
+            return valid;
+        }
         catch (FileNotFoundException error) {
             if(catalog!=null){String user=Identity.normalize(filename.substring(0,filename.length()-5));files.remove(filename);catalog.image(new QueueStore.Image(user,"",filename,0,0,0,0,false));return false;}
             throw new IOException("OUTPUT_UNAVAILABLE", error);
