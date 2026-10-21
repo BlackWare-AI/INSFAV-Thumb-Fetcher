@@ -1,15 +1,15 @@
-# Verification for 0.4.0
+# Verification for 0.5.0
 
 ## Automated checks
 
 - Parser: all three JSON formats; invalid imports preserve existing data; normalization, duplicates, limits and anonymous 1,000 / 5,000 / 10,000-account inputs.
 - Codec: portrait, landscape and tiny source images encode genuine 256 × 256 WebP; legacy 128 × 128 remains valid; corrupt/truncated files are rejected.
-- Queue: direct start with no preflight; more than three unavailable accounts continue to a valid account; image failures do not stop the queue; restrictions and Retry-After pause; existing files are preserved; explicit legacy refresh only replaces 128-pixel outputs; pause cancels all uncommitted assignments and resume processes them.
+- Queue: direct start with no preflight; more than three unavailable accounts continue to a valid account; image failures do not stop the queue; restrictions and Retry-After pause; existing files are preserved; re-import preserves durable status/order; interrupted claims return to pending; notification progress includes Retry Later rows.
 - Synthetic queue concurrency matrix at 1, 2, 5, 10, 30: concurrent peak, unique assignment and exactly-once commits. A separate test uses the real shared one-second launch gate.
 - UI: inline secret editor, no Test Cookies control, concurrency field, private text not restored.
 - DOM fixtures: identity/route binding, loaded images, unavailable pages, login/challenge, wrong accounts/posts/default avatars, explicit HD field and offered srcset candidate.
 - Android API 29 emulator: application launch and real WebView reuse with decoded anonymous fixture images at requested 1, 2, 5, 10, 30. Effective pool size is capped by emulator memory policy; tests are offline and never send fixture sessions to Instagram.
-- SAF: valid existing skip, broken output replacement, partial recovery, permission loss, failed rename, legacy refresh and recovery backup handling.
+- SAF: valid existing skip, broken output replacement, partial recovery, permission loss, failed rename, cached URI lookup, explicit full index verification and resolution audit.
 
 Run `node --test tools/profile-probe.test.cjs` and `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`. CI publishes test reports with APK artifacts. `tools/audit-history.py` scans reachable Git history; it does not replace manual review of newly staged files.
 

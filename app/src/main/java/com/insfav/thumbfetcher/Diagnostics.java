@@ -36,9 +36,9 @@ final class Diagnostics {
         return error instanceof OutOfMemoryError ? "IMPORT_MEMORY_LIMIT" : "INVALID_OR_UNREADABLE_JSON";
     }
     synchronized void export(OutputStream output) throws IOException {
-        output.write("INSFAV Thumb Fetcher 0.4.0\nEngine: bounded reusable Android WebView pool + trusted HTTPS image download.\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
+        output.write("INSFAV Thumb Fetcher 0.5.0\nEngine: bounded reusable Android WebView pool + trusted HTTPS image download.\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
         try (QueueStore queue = new QueueStore(context)) {
-            output.write(("Android SDK: " + android.os.Build.VERSION.SDK_INT + "\nCounters: " + queue.counts() + "\nFailures: " + queue.failures() + "\nRequested WebViews: " + SessionState.prefs(context).getInt("concurrentWebViews", 1) + "\nEffective WebViews: " + QueueControl.effectiveViews + "\nActive WebViews: " + QueueControl.activeViews + "\n").getBytes(StandardCharsets.UTF_8));
+            output.write(("Android SDK: " + android.os.Build.VERSION.SDK_INT + "\nCounters: " + queue.counts() + "\nFailures: " + queue.failures() + "\nIndexed valid thumbnails: " + queue.indexedImages() + "\nOut-of-target resolutions: " + queue.outOfTargetResolution() + "\nOutput index scope: " + (!queue.meta("folder").isEmpty() ? "configured" : "not indexed") + "\nRequested WebViews: " + SessionState.prefs(context).getInt("concurrentWebViews", 1) + "\nEffective WebViews: " + QueueControl.effectiveViews + "\nActive WebViews: " + QueueControl.activeViews + "\nActive accounts: " + QueueControl.activeAccounts + "\nPeak active accounts: " + QueueControl.peakAccounts + "\nCompleted per minute: " + QueueControl.completedPerMinute + "\n").getBytes(StandardCharsets.UTF_8));
         }
         synchronized (FILE_LOCK) { for (File file : new File[]{previous, current}) if (file.exists()) try (FileInputStream input = new FileInputStream(file)) {
             byte[] buffer = new byte[4096]; int n; while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);

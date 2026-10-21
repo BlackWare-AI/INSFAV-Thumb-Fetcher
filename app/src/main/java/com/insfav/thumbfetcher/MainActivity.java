@@ -69,7 +69,7 @@ public final class MainActivity extends Activity {
         preview.setOnClickListener(v -> openPhoto(settings.getString("previewUser", "")));
         start = button(layout, "Start Missing", view -> begin("missing"));
         pause = button(layout, "Pause / Resume", view -> {
-            if (QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true) && settings.getString("blocked", "").isEmpty())) { QueueControl.pause(this, false); status.setText("Pausing after the current request…"); }
+            if (QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true))) { QueueControl.pause(this, false); status.setText("Pausing after the current request…"); }
             else begin("resume");
         });
         stop = button(layout, "Stop", view -> QueueControl.pause(this, true));
@@ -80,6 +80,7 @@ public final class MainActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Open Profile Photo").setView(user).setPositiveButton("Open", (d, which) -> openPhoto(Identity.normalize(user.getText().toString()))).setNegativeButton("Cancel", null).show(); return true;
             });
             menu.getMenu().add("Retry Failed").setOnMenuItemClickListener(item -> { begin("failed"); return true; });
+            menu.getMenu().add("Verify Thumbnail Index").setOnMenuItemClickListener(item -> { begin("verify_index"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
             menu.getMenu().add("Export All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(true);return true;});
             menu.getMenu().add("Import All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(false);return true;});
@@ -98,9 +99,10 @@ public final class MainActivity extends Activity {
     private void picker(Intent intent, int code) { try { startActivityForResult(intent, code); } catch (ActivityNotFoundException error) { message("No document picker is available"); } }
     private void begin(String action) {
         if (busy || QueueControl.lock.get() || launchPending) return;
-        if (!new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
+        if (!"verify_index".equals(action) && !new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
         if (!saveSchedule()) return;
         if ((settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
+        if (!"verify_index".equals(action) && System.currentTimeMillis() < settings.getLong("retryAt",0)) { message("Instagram cooldown is active until Retry-After expires"); return; }
         WorkScheduler.cancel(this);
         { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
         launchPending = true; update();
@@ -188,7 +190,7 @@ public final class MainActivity extends Activity {
             io.execute(() -> {
                 String error = null;
                 try {
-                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); new OutputFolder(this, uri.toString());
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); new OutputFolder(this, uri.toString(), queue, false);
                     String old = settings.getString("tree", ""); settings.edit().putString("tree", uri.toString()).putString("state", "Output folder ready").commit();
                     if (!old.isEmpty() && !old.equals(uri.toString())) try { getContentResolver().releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); } catch (SecurityException ignored) { }
                     log.log("STORAGE", "SELECTED", 0);
@@ -208,17 +210,20 @@ public final class MainActivity extends Activity {
     private void update() {
         if (stats == null) return;
         Map<String, Integer> counts = queue.counts(); int total = 0; for (int value : counts.values()) total += value;
-        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0), remaining = counts.getOrDefault("PENDING", 0);
+        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0), remaining = counts.getOrDefault("PENDING", 0)+counts.getOrDefault("RETRY_LATER",0);
         int percent = total == 0 ? 0 : (total - remaining) * 100 / total;
         stats.setText(String.format(Locale.ROOT, "Total unique accounts: %,d\nExisting valid thumbnails: %,d\nSuccessfully downloaded: %,d\nFailed: %,d\nSkipped (unavailable): %,d\nRemaining: %,d\nProgress: %d%%", total, existing, success, failed, skipped, remaining, percent));
         stats.append("\nCompleted: " + (existing + success) + "\nActive WebViews: " + QueueControl.activeViews + " / " + QueueControl.effectiveViews + "\nConcurrent WebViews: " + settings.getInt("concurrentWebViews", 1));
+        int indexed=queue.indexedImages(),wrongResolution=queue.outOfTargetResolution();
+        stats.append("\nIndexed valid thumbnails: "+indexed+"\nResolution outside 128×128 / 256×256: "+wrongResolution);
+        if(wrongResolution>0)stats.setTextColor(0xffff5555);else stats.setTextColor(Color.WHITE);
         progress.setProgress(percent);
         String previewUser = settings.getString("previewUser", "");
         if (!previewUser.equals(shownPreview)) {
             shownPreview = previewUser;
             io.execute(() -> {
                 try {
-                    byte[] bytes = new OutputFolder(this, settings.getString("tree", "")).thumbnail(Identity.outputFilename(previewUser));
+                    byte[] bytes = new OutputFolder(this, settings.getString("tree", ""), queue, false).thumbnail(Identity.outputFilename(previewUser));
                     android.graphics.Bitmap bitmap = bytes != null && ThumbnailCodec.valid(bytes) ? android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length) : null;
                     handler.post(() -> { if (!isDestroyed()) { preview.setImageBitmap(bitmap); previewLabel.setText(previewUser); } else if (bitmap != null) bitmap.recycle(); });
                 } catch (Exception ignored) { }
@@ -234,7 +239,7 @@ public final class MainActivity extends Activity {
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;
         selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get() || settings.getBoolean("armed", false));
-        pause.setText(QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true) && settings.getString("blocked", "").isEmpty()) ? "Pause" : "Resume");
+        pause.setText(QueueControl.lock.get() || (settings.getBoolean("armed", false) && !settings.getBoolean("userPaused", true)) ? "Pause" : "Resume");
         for (View view : configurationViews) view.setEnabled(!active);
         cookieInput.setEnabled(!active);
     }
