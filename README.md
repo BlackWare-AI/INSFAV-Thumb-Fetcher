@@ -1,3 +1,5 @@
+**JSON backup compatibility: This app reads `.json` backup files from SamMods InstaPro version 15.30 and earlier.**
+
 # INSFAV Thumb Fetcher
 
 Standalone native Android helper, version **0.4.0** (version code 7). Java, Android 8.0/API 26+, English UI, AMOLED black. No analytics or account registration.
@@ -6,14 +8,23 @@ Standalone native Android helper, version **0.4.0** (version code 7). Java, Andr
 
 The original 0.3.0 WebView build remains unchanged at [`v0.2.2-working`](https://github.com/BlackWare-AI/INSFAV-Thumb-Fetcher/releases/tag/v0.2.2-working), commit `a153102dd95243465144efc3ec74b5cb11186e09`. The tag name is an archival label. Development of 0.4.0 is isolated on `development/0.4.0`; it does not replace that tag or the original APK.
 
-## Usage
+## What the app does
 
-1. Select an INSFAV JSON backup and a writable output parent through Android's document picker.
-2. Paste Netscape cookie text or an HTTP Cookie header, then Save Cookies. There is no cookie file picker or test gate.
-3. Set delay, working hours and **Concurrent WebViews (1–30, default 1)**. Save Settings.
-4. Start Missing. Pause/Resume and Stop preserve unfinished work. Retry Failed also includes previously skipped accounts.
-5. More → Refresh 128 × 128 Thumbnails explicitly redownloads legacy thumbnails. Existing valid files otherwise remain unchanged.
-6. Tap the latest thumbnail, or More → Open Profile Photo for an imported username. The local image appears first; an explicitly offered larger profile image is fetched into memory when the queue session is free. Pause the queue before opening HD during a download run.
+INSFAV Thumb Fetcher is a small, standalone Android companion for preparing profile thumbnails from an INSFAV JSON backup. It reads account usernames from the selected backup, opens public Instagram profile pages with the user's own saved session when available, finds an account-matched profile image, and writes a centered 256 × 256 WebP thumbnail. It does not edit or upload the JSON backup.
+
+It is limited to profile pictures. It does not download posts, stories, or videos, manage collections, search Instagram, or sync data to a cloud service.
+
+## How to use
+
+1. Install and open the app. Choose **Select JSON** and select the `.json` backup. The app reports the number of unique usernames it found. The selected file is read locally and is never rewritten.
+2. Choose **Select Output Folder** and grant access to a writable parent folder. The app creates or reuses `.thumbnails` inside it and stores files as `.thumbnails/<normalized-username>.webp`.
+3. Enter your Instagram session cookies in the Cookies section and choose **Save Cookies**. The app accepts Netscape `cookies.txt` text or a standard HTTP `Cookie` header pasted into the text area. Cookies are needed for pages requiring your session; saved cookie values are encrypted in app-private storage and are not shown again. There is no separate cookie test gate.
+4. Set **Minimum Delay** and **Maximum Delay**, **Start Time** and **End Time**, and optionally **Concurrent WebViews** (1–30; default 1). Save Settings. A higher pool setting is only a ceiling; the app may lower it to fit device memory. Keep concurrency at 1 unless the device can handle more.
+5. Choose **Start Missing**. Valid existing WebP thumbnails are kept. The queue processes only missing or invalid outputs. Use **Pause / Resume** to hold and continue, or **Stop** to stop safely. Failed and skipped accounts can be retried later using **Retry Failed**.
+6. Check the live counters for completed, failed, skipped, remaining, and active WebViews. Missing or unavailable pages are skipped with a reason so one bad account does not stop the batch. Login challenges, CAPTCHA, rate limits, or explicit access restrictions pause new work; follow the on-screen state and resume only when access is available.
+7. To explicitly refresh legacy 128 × 128 thumbnails, use **More → Refresh 128 × 128 Thumbnails**. The app does not delete or automatically upscale older valid files. To view a profile photo, tap a thumbnail or use **More → Open Profile Photo**. The local thumbnail appears first; if offered and available, a larger current image is fetched in memory. It is not saved permanently.
+
+The backup format parser supports the three INSFAV JSON layouts documented below and has a 32 MiB input limit. Only usernames are normalized for matching; the source JSON and collection/account order are left untouched.
 
 New files: `.thumbnails/<normalized-username>.webp`, 256 × 256, quality 78, center crop. Fixed-size output can scale small sources; this creates no new detail. Legacy 128 × 128 WebP remains valid. The JSON is read-only, with a 32 MiB limit and three supported INSFAV formats.
 
