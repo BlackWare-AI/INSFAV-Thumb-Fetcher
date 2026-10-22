@@ -97,16 +97,16 @@ final class QueueStore extends SQLiteOpenHelper {
     }
     List<String> preflightCandidates() {
         ArrayList<String> users=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT username FROM accounts WHERE status!='SKIPPED' ORDER BY CASE WHEN status='PENDING' THEN 0 ELSE 1 END,position LIMIT 5",null)){while(c.moveToNext())users.add(c.getString(0));}
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT username FROM accounts WHERE status NOT IN ('SKIPPED','SKIPPED_UNAVAILABLE') ORDER BY CASE WHEN status='PENDING' THEN 0 ELSE 1 END,position LIMIT 5",null)){while(c.moveToNext())users.add(c.getString(0));}
         return users;
     }
     void mark(String user,String status,String code) {
         ContentValues v=new ContentValues();v.put("status",status);v.put("code",code);
-        v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.equals("SKIPPED")?"SKIPPED":code.equals("RATE_LIMITED")?"RATE_LIMITED":status.equals("RETRY_LATER")?"PENDING":status);
+        v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":code.equals("RATE_LIMITED")?"RATE_LIMITED":status.equals("RETRY_LATER")?"PENDING":status);
         getWritableDatabase().update("accounts",v,"username=?",new String[]{user});
     }
     List<String> pending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1"); }
-    List<String> retryable() { return select("status IN ('FAILED','SKIPPED','RETRY_LATER')"); }
+    List<String> retryable() { return select("status IN ('FAILED','SKIPPED','SKIPPED_UNAVAILABLE','RETRY_LATER')"); }
     private List<String> select(String where) {
         ArrayList<String> users=new ArrayList<>();
         try(Cursor c=getReadableDatabase().query("accounts",new String[]{"username"},where,null,null,null,"position")){while(c.moveToNext())users.add(c.getString(0));}
@@ -125,7 +125,7 @@ final class QueueStore extends SQLiteOpenHelper {
     int attempts(String user){try(Cursor c=getReadableDatabase().rawQuery("SELECT attempts FROM accounts WHERE username=?",new String[]{user})){return c.moveToFirst()?c.getInt(0):0;}}
     Map<String,Integer> failures(){
         Map<String,Integer> out=new LinkedHashMap<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status IN ('FAILED','SKIPPED','RETRY_LATER') GROUP BY code ORDER BY COUNT(*) DESC",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT code,COUNT(*) FROM accounts WHERE status IN ('FAILED','SKIPPED','SKIPPED_UNAVAILABLE','RETRY_LATER') GROUP BY code ORDER BY COUNT(*) DESC",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}
         return out;
     }
     Map<String,Integer> counts(){Map<String,Integer> out=new HashMap<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT status,COUNT(*) FROM accounts GROUP BY status",null)){while(c.moveToNext())out.put(c.getString(0),c.getInt(1));}return out;}

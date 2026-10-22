@@ -116,7 +116,7 @@ final class QueueEngine {
                     if(error.code.equals("OUTSIDE_WORKING_HOURS")){hoursEnded=true;continue;}
                     if (error.code.equals("REQUEST_CANCELLED")) continue; // Leave pending for a manual resume.
                     queue.attempted(result.user);
-                    queue.mark(result.user, FailurePolicy.skip(error.code) ? "SKIPPED" : error.retryAt>0?"RETRY_LATER":"FAILED", error.code);
+                    queue.mark(result.user, FailurePolicy.skip(error) ? (FailurePolicy.confirmedUnavailable(error) ? "SKIPPED_UNAVAILABLE" : "SKIPPED") : error.retryAt>0?"RETRY_LATER":"FAILED", error.code);
                     log.log("PROFILE", error.code, error.http);
                     if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).putInt("blockedHttp",error.http).commit();
                     if (FailurePolicy.pause(error)) { block(error.code); blocked = true; break; }

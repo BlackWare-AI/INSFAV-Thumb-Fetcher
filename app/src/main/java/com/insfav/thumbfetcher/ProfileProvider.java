@@ -11,8 +11,12 @@ interface ProfileProvider extends AutoCloseable {
         final int http;
         final long retryAt;
         final boolean pause;
+        final boolean confirmedUnavailable;
         Failure(String code, int http, long retryAt, boolean pause) {
-            super(code); this.code = code; this.http = http; this.retryAt = retryAt; this.pause = pause;
+            this(code, http, retryAt, pause, false);
+        }
+        Failure(String code, int http, long retryAt, boolean pause, boolean confirmedUnavailable) {
+            super(code); this.code = code; this.http = http; this.retryAt = retryAt; this.pause = pause; this.confirmedUnavailable = confirmedUnavailable;
         }
         Failure(String code) { this(code, 0, 0, false); }
     }

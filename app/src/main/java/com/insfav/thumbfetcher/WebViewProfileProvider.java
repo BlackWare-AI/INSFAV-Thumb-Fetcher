@@ -281,6 +281,14 @@ final class WebViewProfileProvider implements ProfileProvider {
                         JSONObject data = WebProfilePolicy.snapshot(encoded);
                         String wall = data.optString("wall");
                         if (!wall.isEmpty()) {
+                            if (wall.equals("PROFILE_PAGE_UNAVAILABLE")) {
+                                Failure unavailable = ProbeDecision.failure(user, data);
+                                if (unavailable != null) { fail(unavailable); return; }
+                                if (data.optBoolean("candidateFound")) { data.remove("wall"); wall = ""; }
+                                else { fail(new Failure("PROFILE_PAGE_UNAVAILABLE", 200, 0, false)); return; }
+                            }
+                        }
+                        if (!wall.isEmpty()) {
                             // Only this fixed vocabulary may cross into logs.
                             for (String allowed : new String[]{"RATE_LIMITED","ACCESS_BLOCKED","CHALLENGE_REQUIRED","COOKIE_INVALID_EXPIRED","PROFILE_PAGE_UNAVAILABLE","PROFILE_DEFAULT_AVATAR","PROFILE_DATA_AMBIGUOUS","UNTRUSTED_SOURCE"})
                                 if (wall.equals(allowed)) { fail(new Failure(allowed, 200, allowed.equals("RATE_LIMITED") ? PublicProfileProvider.retryAt(null, System.currentTimeMillis()) : 0, !allowed.equals("PROFILE_DEFAULT_AVATAR") && !allowed.equals("PROFILE_DATA_AMBIGUOUS"))); return; }

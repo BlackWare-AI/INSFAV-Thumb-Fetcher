@@ -47,11 +47,21 @@ public class EngineTest {
         assertEquals(256,bitmap.getWidth()); bitmap.recycle(); assertFalse(SessionState.verified(prefs));
     }
     @Test public void allAccountLocalFailuresAreSkippedAndLaterAccountStillDownloads() {
-        String[] codes={"PROFILE_NOT_FOUND_OR_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE","PROFILE_IMAGE_URL_MISSING","WEBVIEW_TIMEOUT","WEBVIEW_NETWORK_ERROR","WEBVIEW_NAVIGATION_BLOCKED","PROFILE_DEFAULT_AVATAR","HTTP_ERROR"};
+        String[] codes={"PROFILE_NOT_FOUND_OR_UNAVAILABLE","PROFILE_IMAGE_URL_MISSING","WEBVIEW_TIMEOUT","WEBVIEW_NETWORK_ERROR","WEBVIEW_NAVIGATION_BLOCKED","PROFILE_DEFAULT_AVATAR","HTTP_ERROR"};
         accounts(codes.length+1);
         engine(fake(user -> { int i=Integer.parseInt(user.substring(10)); if(i<codes.length)throw new ProfileProvider.Failure(codes[i],200,0,true); return pixels; })).run("missing",false);
         assertEquals(Integer.valueOf(codes.length),queue.counts().get("SKIPPED")); assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
         assertEquals("",prefs.getString("blocked","")); assertTrue(queue.pending().isEmpty());
+    }
+    @Test public void confirmedUnavailableTextGetsDedicatedPersistentSkipState() {
+        accounts(2);
+        engine(fake(user -> {
+            if (user.endsWith("0")) throw new ProfileProvider.Failure("PROFILE_PAGE_UNAVAILABLE",200,0,false,true);
+            return pixels;
+        })).run("missing",false);
+        assertEquals(Integer.valueOf(1),queue.counts().get("SKIPPED_UNAVAILABLE"));
+        assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
+        assertEquals(Integer.valueOf(1),queue.failures().get("PROFILE_PAGE_UNAVAILABLE"));
     }
     @Test public void imageFailuresDoNotTriggerThreeFailureStop() {
         engine(fake(user -> new byte[]{1,2,3})).run("missing",false);
