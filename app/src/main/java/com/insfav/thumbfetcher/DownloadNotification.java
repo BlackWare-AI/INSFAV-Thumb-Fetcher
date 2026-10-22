@@ -13,7 +13,7 @@ final class DownloadNotification {
     static final class Progress {
         final int downloaded,existing,failed,skipped,pending,total,done,percent; final String status;
         Progress(Map<String,Integer> counts,String phase,String blocked) {
-            downloaded=counts.getOrDefault("SUCCESS",0);existing=counts.getOrDefault("EXISTING",0);failed=counts.getOrDefault("FAILED",0);skipped=counts.getOrDefault("SKIPPED",0);
+            downloaded=counts.getOrDefault("SUCCESS",0);existing=counts.getOrDefault("EXISTING",0);failed=counts.getOrDefault("FAILED",0);skipped=counts.getOrDefault("SKIPPED",0)+counts.getOrDefault("SKIPPED_UNAVAILABLE",0);
             pending=counts.getOrDefault("PENDING",0)+counts.getOrDefault("RETRY_LATER",0);total=downloaded+existing+failed+skipped+pending;done=total-pending;percent=total==0?0:(int)(100L*done/total);
             status=blocked.equals("RATE_LIMITED")?"Rate Limited":blocked.startsWith("COOKIE_")||blocked.startsWith("LOGIN_")?"Authentication Required":!blocked.isEmpty()?"Paused":phase.startsWith("Starting")||phase.equals("Preparing")?"Starting":phase.equals("Completed")&&pending==0?(failed>0||skipped>0?"Completed with issues":"Completed"):phase.startsWith("Paused")||phase.equals("Stopped")?"Paused":phase.startsWith("Interrupted")?"Interrupted":phase.startsWith("Waiting")?"Waiting":"Downloading";
         }

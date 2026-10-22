@@ -1,0 +1,85 @@
+name: Publish INSFAV Thumb Fetcher 0.5.0 build 9
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-050.yml'
+      - 'app/build.gradle'
+      - 'app/src/main/assets/profile-probe.js'
+      - 'app/src/main/java/com/insfav/thumbfetcher/**'
+      - 'app/src/test/java/com/insfav/thumbfetcher/**'
+      - 'tests/probe-classification.cjs'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    if: github.repository == 'BlackWare-AI/INSFAV-Thumb-Fetcher'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify app version
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          build = Path('app/build.gradle').read_text()
+          assert re.search(r"versionCode\s+9\b", build)
+          assert re.search(r"versionName\s+'0\.5\.0'", build)
+          PY
+      - name: Run offline probe fixtures and Android verification
+        run: |
+          node --test tools/profile-probe.test.cjs tests/probe-classification.cjs
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon --console=plain
+      - name: Verify APK metadata and create release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.insfav.thumbfetcher' versionCode='9' versionName='0.5.0'"
+          size=$(stat -c%s "$apk")
+          sha=$(sha256sum "$apk" | cut -d ' ' -f 1)
+          echo "$sha  INSFAV-Thumb-Fetcher-0.5.0-build9.apk" > SHA256SUMS
+          cp "$apk" INSFAV-Thumb-Fetcher-0.5.0-build9.apk
+          cat > RELEASE-NOTES.md <<EOF
+          # INSFAV Thumb Fetcher 0.5.0 (build 9)
+
+          This release keeps the app version at 0.5.0 and increments Android build number to 9.
+
+          - Closed/unavailable page text in English and Turkish is detected before canonical and profile-data decisions, immediately producing `PROFILE_PAGE_UNAVAILABLE` with `TEXT_MATCH` evidence.
+          - A page with an account-bound profile image candidate continues normal image processing.
+          - Confirmed unavailable pages are recorded as `SKIPPED_UNAVAILABLE`; network, timeout, rate-limit, cookie, login and challenge handling is unchanged.
+          - The single shared WebView probe is used for standard and high-resolution retrieval modes.
+
+          APK size: ${size} bytes. SHA-256: `${sha}`.
+
+          Automated tests use offline fixtures. No live Instagram session or physical-device test is represented by this release.
+          EOF
+          if gh release view v0.5.0 >/dev/null 2>&1; then
+            echo 'v0.5.0 release already exists; preserving it without replacement.'
+            exit 0
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/v0.5.0" >/dev/null 2>&1; then
+            echo 'v0.5.0 tag already exists without a release; refusing to overwrite it.'
+            exit 1
+          fi
+          gh release create v0.5.0 INSFAV-Thumb-Fetcher-0.5.0-build9.apk SHA256SUMS \
+            --title "INSFAV Thumb Fetcher 0.5.0 (build 9)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"

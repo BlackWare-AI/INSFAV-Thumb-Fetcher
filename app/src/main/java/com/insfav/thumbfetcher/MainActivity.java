@@ -212,7 +212,7 @@ public final class MainActivity extends Activity {
     private void update() {
         if (stats == null) return;
         Map<String, Integer> counts = queue.counts(); int total = 0; for (int value : counts.values()) total += value;
-        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0), remaining = counts.getOrDefault("PENDING", 0)+counts.getOrDefault("RETRY_LATER",0);
+        int existing = counts.getOrDefault("EXISTING", 0), success = counts.getOrDefault("SUCCESS", 0), failed = counts.getOrDefault("FAILED", 0), skipped = counts.getOrDefault("SKIPPED", 0)+counts.getOrDefault("SKIPPED_UNAVAILABLE",0), remaining = counts.getOrDefault("PENDING", 0)+counts.getOrDefault("RETRY_LATER",0);
         int percent = total == 0 ? 0 : (total - remaining) * 100 / total;
         stats.setText(String.format(Locale.ROOT, "Total unique accounts: %,d\nExisting valid thumbnails: %,d\nSuccessfully downloaded: %,d\nFailed: %,d\nSkipped (unavailable): %,d\nRemaining: %,d\nProgress: %d%%", total, existing, success, failed, skipped, remaining, percent));
         stats.append("\nCompleted: " + (existing + success) + "\nActive WebViews: " + QueueControl.activeViews + " / " + QueueControl.effectiveViews + "\nConcurrent WebViews: " + settings.getInt("concurrentWebViews", 1));

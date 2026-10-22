@@ -1,7 +1,7 @@
 function (expected, expectedId, preferHigh) {
     "use strict";
     const result = {page: location.href, username: expected};
-    const wall = code => JSON.stringify(Object.assign(result, {wall: code}));
+    const wall = (code, reason) => JSON.stringify(Object.assign(result, {wall: code}, reason ? {reason} : {}));
     const path = location.pathname.toLowerCase();
     if (/\/(challenge|checkpoint|captcha)(\/|$)/.test(path)) return wall("CHALLENGE_REQUIRED");
     if (path.startsWith("/accounts/login")) return wall("COOKIE_INVALID_EXPIRED");
@@ -13,8 +13,32 @@ function (expected, expectedId, preferHigh) {
         if (f.id === "loginForm" || action.includes("/accounts/login")) return wall("COOKIE_INVALID_EXPIRED");
     }
     const pageText = document.body && typeof document.body.innerText === "string" ? document.body.innerText.slice(0, 24000).toLowerCase() : "";
+    const unavailableTerms = ["sorry, this page isn't available", "bu sayfa kullanılamıyor", "bu sayfaya ulaşılamıyor", "sayfa kaldırılmış", "bağlantı bozuk olabilir"];
+    const unavailableText = unavailableTerms.some(term => pageText.includes(term));
+    const safe = raw => {
+        try {
+            const u = new URL(raw);
+            return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") &&
+                /\.(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname) &&
+                !/anonymous|default|logo|44884218_345707102882519_2446069589734326272/i.test(raw);
+        } catch (_) { return false; }
+    };
+    let images = null, candidateFound = false;
+    if (unavailableText) {
+        result.unavailableText = true;
+        result.pageReady = true;
+        result.searchCompleted = true;
+        images = Array.from(document.images).slice(0, 400);
+        candidateFound = images.some(img => {
+            if (img.closest("article,nav,aside")) return false;
+            const alt = (img.getAttribute("alt") || "").trim().toLowerCase();
+            const bound = alt.startsWith(expected) && !/[a-z0-9_.]/.test(alt.charAt(expected.length)) && /profile picture|profile photo|profil/.test(alt);
+            return !!(bound && img.closest("header,main") && safe(img.currentSrc || img.src));
+        });
+        if (candidateFound) result.candidateFound = true;
+        if (!candidateFound) return wall("PROFILE_PAGE_UNAVAILABLE", "TEXT_MATCH");
+    }
     if (/please wait a few minutes before you try again|we restrict certain activity/.test(pageText)) return wall("RATE_LIMITED");
-    if (/sorry, this page isn.t available|bu sayfa kullanılamıyor/.test(pageText)) return wall("PROFILE_PAGE_UNAVAILABLE");
     const structured = new Set();
     let viewer = false, anonymous = false, routedError = false, visits = 0;
     const normalize = x => typeof x === "string" ? x.trim().replace(/^@/, "").toLowerCase() : "";
@@ -57,15 +81,7 @@ function (expected, expectedId, preferHigh) {
         if (u.protocol === "https:" && /^(www\.)?instagram\.com$/.test(u.hostname)) canonicalUser = normalize(u.pathname.replace(/^\/|\/$/g, ""));
     } catch (_) {}
     if (canonicalUser !== expected) return JSON.stringify(result);
-    const safe = raw => {
-        try {
-            const u = new URL(raw);
-            return u.protocol === "https:" && !u.username && !u.password && (!u.port || u.port === "443") &&
-                /\.(cdninstagram\.com|fbcdn\.net)$/.test(u.hostname) &&
-                !/anonymous|default|logo|44884218_345707102882519_2446069589734326272/i.test(raw);
-        } catch (_) { return false; }
-    };
-    const images = Array.from(document.images).slice(0, 400);
+    if (!images) images = Array.from(document.images).slice(0, 400);
     const candidates = new Map();
     for (const img of images) {
         if (img.closest("article,nav,aside")) continue;
@@ -73,6 +89,7 @@ function (expected, expectedId, preferHigh) {
         const bound = alt.startsWith(expected) && !/[a-z0-9_.]/.test(alt.charAt(expected.length)) && /profile picture|profile photo|profil/.test(alt);
         if (bound && img.closest("header,main") && safe(img.currentSrc || img.src)) candidates.set(img.currentSrc || img.src, img);
     }
+    if (candidates.size > 0) result.candidateFound = true;
     let url = "", kind = "", img;
     if (preferHigh && structured.size === 1) {
         url = Array.from(structured)[0]; kind = "profile_json";
