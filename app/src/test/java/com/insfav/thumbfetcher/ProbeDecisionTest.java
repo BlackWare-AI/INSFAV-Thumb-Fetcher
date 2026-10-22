@@ -2,8 +2,13 @@ package com.insfav.thumbfetcher;
 
 import org.json.JSONObject;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import static org.junit.Assert.*;
 
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = 28, manifest = Config.NONE)
 public class ProbeDecisionTest {
     @Test public void onlyExplicitClosedPageTextConfirmsUnavailable() throws Exception {
         for (String text : new String[]{"bu sayfa kullanılamıyor", "sorry, this page isn't available"}) {
