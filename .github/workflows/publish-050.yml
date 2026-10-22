@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify tag and app version
+      - name: Verify app version
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -82,4 +82,4 @@ jobs:
             exit 1
           fi
           gh release create v0.5.0 INSFAV-Thumb-Fetcher-0.5.0-build9.apk SHA256SUMS \
-            --title "INSFAV Thumb Fetcher 0.5.0 (build 9)" --notes-file RELEASE-NOTES.md
+            --title "INSFAV Thumb Fetcher 0.5.0 (build 9)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"
