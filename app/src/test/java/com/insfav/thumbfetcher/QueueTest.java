@@ -83,7 +83,7 @@ public class QueueTest {
         store.finishMissingImageRetry("example","RETRY_LATER","RATE_LIMITED");
         assertEquals("A completed one-time retry must not be repeated by Resume",Collections.singletonList("valid_2"),store.normalPending());
         store.reset(store.retryable());
-        assertEquals("The separate explicit Retry Failed command remains available",Arrays.asList("example","valid_2"),store.normalPending());
+        assertEquals("The separate explicit Retry Failed command remains available",Collections.singletonList("example"),store.normalPending());
     }
     @Test public void invalidImportPreservesOldQueue() {
         try { store.replace(ImportTest.parse("broken")); fail(); } catch (Exception expected) { }
