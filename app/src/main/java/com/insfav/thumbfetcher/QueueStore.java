@@ -7,10 +7,10 @@ import java.util.*;
 
 /** Durable account queue and output-image index. Queue metadata stays in private app storage. */
 final class QueueStore extends SQLiteOpenHelper {
-    QueueStore(Context context) { super(context, "queue.db", null, 4); setWriteAheadLoggingEnabled(true); }
+    QueueStore(Context context) { super(context, "queue.db", null, 5); setWriteAheadLoggingEnabled(true); }
 
     @Override public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE accounts (username TEXT PRIMARY KEY, position INTEGER NOT NULL, status TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', eligible INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'PENDING', timeout_retry_state TEXT NOT NULL DEFAULT 'NONE', timeout_retry_run TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE accounts (username TEXT PRIMARY KEY, position INTEGER NOT NULL, status TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', eligible INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'PENDING', timeout_retry_state TEXT NOT NULL DEFAULT 'NONE', timeout_retry_run TEXT NOT NULL DEFAULT '', missing_retry_state TEXT NOT NULL DEFAULT 'NONE', missing_retry_run TEXT NOT NULL DEFAULT '')");
         db.execSQL("CREATE INDEX account_work_order ON accounts(status,position)");
         createCatalog(db);
     }
@@ -24,6 +24,10 @@ final class QueueStore extends SQLiteOpenHelper {
         if (oldVersion < 4) {
             db.execSQL("ALTER TABLE accounts ADD COLUMN timeout_retry_state TEXT NOT NULL DEFAULT 'NONE'");
             db.execSQL("ALTER TABLE accounts ADD COLUMN timeout_retry_run TEXT NOT NULL DEFAULT ''");
+        }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE accounts ADD COLUMN missing_retry_state TEXT NOT NULL DEFAULT 'NONE'");
+            db.execSQL("ALTER TABLE accounts ADD COLUMN missing_retry_run TEXT NOT NULL DEFAULT ''");
         }
         db.execSQL("CREATE INDEX IF NOT EXISTS account_work_order ON accounts(status,position)");
         createCatalog(db);
@@ -128,11 +132,11 @@ final class QueueStore extends SQLiteOpenHelper {
         v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":status.equals("RETRY_LATER")?"PENDING":status);
         getWritableDatabase().update("accounts",v,"username=? AND timeout_retry_state='PENDING'",new String[]{user});
     }
-    static final class TimeoutRetryReport {
+    static final class RetryReport {
         final int retried,recovered; final List<String[]> failed;
-        TimeoutRetryReport(int retried,int recovered,List<String[]> failed){this.retried=retried;this.recovered=recovered;this.failed=failed;}
+        RetryReport(int retried,int recovered,List<String[]> failed){this.retried=retried;this.recovered=recovered;this.failed=failed;}
     }
-    TimeoutRetryReport timeoutRetryReport(String runId) {
+    RetryReport timeoutRetryReport(String runId) {
         int retried=0,recovered=0; ArrayList<String[]> failed=new ArrayList<>();
         try(Cursor c=getReadableDatabase().rawQuery("SELECT username,timeout_retry_state,code FROM accounts WHERE timeout_retry_run=? AND timeout_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
             while(c.moveToNext()) { retried++; String user=c.getString(0),state=c.getString(1),code=c.getString(2);
@@ -140,7 +144,30 @@ final class QueueStore extends SQLiteOpenHelper {
                 else if("FAILED".equals(state)) failed.add(new String[]{user,code});
             }
         }
-        return new TimeoutRetryReport(retried,recovered,failed);
+        return new RetryReport(retried,recovered,failed);
+    }
+    /** Select only the two image-discovery failures; each account receives one durable retry. */
+    int prepareMissingImageRetries(String runId) {
+        SQLiteDatabase db=getWritableDatabase(); db.beginTransaction();
+        try {
+            SQLiteStatement statement=db.compileStatement("UPDATE accounts SET status='PENDING',phase='PENDING',code='',eligible=1,missing_retry_state='PENDING',missing_retry_run=? WHERE code IN ('PROFILE_IMAGE_URL_MISSING','PROFILE_DATA_AMBIGUOUS') AND missing_retry_state='NONE' AND status IN ('FAILED','SKIPPED') AND NOT EXISTS (SELECT 1 FROM fetch_images WHERE fetch_images.username=accounts.username AND readable=1 AND needs_check=0)");
+            statement.bindString(1,runId); int count=statement.executeUpdateDelete();
+            db.setTransactionSuccessful(); return count;
+        } finally { db.endTransaction(); }
+    }
+    List<String> missingImageRetryPending() { return select("missing_retry_state='PENDING' AND status IN ('PENDING','RETRY_LATER') AND eligible=1"); }
+    void finishMissingImageRetry(String user,String status,String code) {
+        String retry=(status.equals("SUCCESS")||status.equals("EXISTING"))?"RECOVERED":"FAILED";
+        ContentValues v=new ContentValues();v.put("missing_retry_state",retry);v.put("status",status);v.put("code",code);
+        v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":status.equals("RETRY_LATER")?"PENDING":status);
+        getWritableDatabase().update("accounts",v,"username=? AND missing_retry_state='PENDING'",new String[]{user});
+    }
+    RetryReport missingImageRetryReport(String runId) {
+        int retried=0,recovered=0;ArrayList<String[]> failed=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT username,missing_retry_state,code FROM accounts WHERE missing_retry_run=? AND missing_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
+            while(c.moveToNext()){retried++;String user=c.getString(0),state=c.getString(1),code=c.getString(2);if("RECOVERED".equals(state))recovered++;else if("FAILED".equals(state))failed.add(new String[]{user,code});}
+        }
+        return new RetryReport(retried,recovered,failed);
     }
     List<String> pending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1"); }
     List<String> retryable() { return select("status IN ('FAILED','SKIPPED','SKIPPED_UNAVAILABLE','RETRY_LATER')"); }
