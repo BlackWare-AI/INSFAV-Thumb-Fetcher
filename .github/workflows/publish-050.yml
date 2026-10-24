@@ -22,10 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -57,23 +53,11 @@ jobs:
         run: |
           node --test tools/profile-probe.test.cjs tests/probe-classification.cjs
           ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon --console=plain
-      - name: Require persistent release signing key
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then echo "Missing required GitHub Actions secret: $name" >&2; exit 1; fi
-          done
-          key="$RUNNER_TEMP/insfav-release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key"
-          test -s "$key"
-          echo "ANDROID_KEYSTORE_PATH=$key" >> "$GITHUB_ENV"
-      - name: Build and verify update-installable release APK
+      - name: Build and verify signed debug APK
         if: github.event_name == 'push'
         run: |
-          ./gradlew :app:assembleRelease --no-daemon --console=plain
-          apk=app/build/outputs/apk/release/app-release.apk
+          ./gradlew :app:assembleDebug --no-daemon --console=plain
+          apk=app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.insfav.thumbfetcher' versionCode='10' versionName='0.5.0'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           size=$(stat -c%s "$apk")
@@ -83,7 +67,7 @@ jobs:
           cat > RELEASE-NOTES.md <<EOF
           # INSFAV Thumb Fetcher 0.5.0 (build 10)
 
-          The application version remains 0.5.0; Android versionCode is 10. The release APK is signed using the persistent repository release key so it can update an installation signed with that same key.
+          The application version remains 0.5.0; Android versionCode is 10. This APK is signed with the GitHub Actions Android debug key. It is suitable for a fresh install, but may not update an existing installation because the CI debug key is not persistent. If Android reports a signature conflict, uninstall the previous build before installing this one. App-private cookies, queue and settings are removed by uninstall; JSON backups and thumbnails in the selected external folder remain.
 
           - Adds a persistent, one-time Retry Timeouts action restricted to accounts whose last eligible result was WEBVIEW_TIMEOUT.
           - Never selects successful, pending, or PROFILE_PAGE_UNAVAILABLE accounts for this action.
@@ -96,5 +80,5 @@ jobs:
           Automated tests use offline fixtures. No live Instagram session or physical-device test is represented by this release.
           EOF
           tag=v0.5.0-build10
-          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; refusing to overwrite it."; exit 1; fi
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; leaving it unchanged."; exit 0; fi
           gh release create "$tag" INSFAV-Thumb-Fetcher-0.5.0-build10.apk SHA256SUMS --title "INSFAV Thumb Fetcher 0.5.0 (build 10)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"

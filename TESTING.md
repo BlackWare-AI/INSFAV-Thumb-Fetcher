@@ -12,7 +12,7 @@
 - Android API 29 emulator: application launch and real WebView reuse with decoded anonymous fixture images at requested 1, 2, 5, 10, 30. Effective pool size is capped by emulator memory policy; tests are offline and never send fixture sessions to Instagram.
 - SAF: valid existing skip, broken output replacement, partial recovery, permission loss, failed rename, cached URI lookup, explicit full index verification and resolution audit.
 
-Run `node --test tools/profile-probe.test.cjs` and `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`. The build 10 release workflow also requires the persistent signing key as repository Actions secrets and verifies the signed APK before creating the release. CI publishes test reports with APK artifacts. `tools/audit-history.py` scans reachable Git history; it does not replace manual review of newly staged files.
+Run `node --test tools/profile-probe.test.cjs` and `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest`. Build 10 is published as an Android debug-signed APK; the CI debug key is not persistent, so the artifact may require uninstalling an older install before setup. CI publishes test reports with APK artifacts. `tools/audit-history.py` scans reachable Git history; it does not replace manual review of newly staged files.
 
 ## Required physical-device follow-up
 

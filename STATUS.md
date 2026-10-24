@@ -6,6 +6,6 @@ The output index and account queue are stored in private SQLite. Reimporting an 
 
 Notifications now show queue-derived completed, failed, skipped, remaining and progress counts. Rate limits preserve Retry-After and can resume through WorkManager within the configured hours when Background Processing remains enabled. Android may delay or stop background work.
 
-No authenticated live Instagram validation or physical-device verification is claimed for 0.5.0 build 10. The current workspace has no Android SDK / cached Gradle 8.13 distribution and cannot reach services.gradle.org, so local Android build and unit tests could not start. Node DOM fixture tests pass. CI verification is required before release. No account identifiers or cookies were added to the repository. The release workflow requires the persistent Android signing key as GitHub Actions secrets and refuses to publish without it.
+No authenticated live Instagram validation or physical-device verification is claimed for 0.5.0 build 10. Node DOM fixture tests passed locally. GitHub Actions passed Android unit tests, lint, app builds and the offline WebView pool/emulator verification. The build 10 APK is signed with the CI debug key; it may require uninstalling an older build before installation and is not guaranteed to support future in-place updates. No account identifiers or cookies were added to the repository.
 
 The prior published 0.4.0 release and the historical `v0.2.2-working` reference remain unchanged.
