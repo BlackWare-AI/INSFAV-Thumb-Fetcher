@@ -81,6 +81,9 @@ public final class MainActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Open Profile Photo").setView(user).setPositiveButton("Open", (d, which) -> openPhoto(Identity.normalize(user.getText().toString()))).setNegativeButton("Cancel", null).show(); return true;
             });
             menu.getMenu().add("Retry Failed").setOnMenuItemClickListener(item -> { begin("failed"); return true; });
+            menu.getMenu().add("Retry Timeouts").setOnMenuItemClickListener(item -> { begin("retry_timeouts"); return true; });
+            menu.getMenu().add("Timeout Retry Results").setOnMenuItemClickListener(item -> { showTimeoutRetryResults(); return true; });
+            menu.getMenu().add("Export Timeout-Failed.txt").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Timeout-Failed.txt"), 13); return true; });
             menu.getMenu().add("Verify Thumbnail Index").setOnMenuItemClickListener(item -> { begin("verify_index"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
             menu.getMenu().add("Export All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(true);return true;});
@@ -107,7 +110,7 @@ public final class MainActivity extends Activity {
         WorkScheduler.cancel(this);
         { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
         launchPending = true; update();
-        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : "START_MISSING", 0); }
+        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.equals("retry_timeouts") ? "RETRY_TIMEOUTS" : "START_MISSING", 0); }
         catch (RuntimeException error) { settings.edit().putString("blocked", "SYSTEM_RESTRICTED").commit(); message("Foreground service could not start"); }
         handler.postDelayed(() -> { launchPending = false; update(); }, 1000);
     }
@@ -202,7 +205,28 @@ public final class MainActivity extends Activity {
         } else if (request == 12) io.execute(() -> {
             try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) { if (output == null) throw new IOException(); log.export(output); handler.post(() -> message("Diagnostics exported")); }
             catch (Exception error) { handler.post(() -> message("Diagnostics export failed")); }
+        }); else if (request == 13) io.execute(() -> {
+            try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) { if (output == null) throw new IOException(); output.write(timeoutRetryText().getBytes(java.nio.charset.StandardCharsets.UTF_8)); handler.post(() -> message("Timeout-Failed.txt exported")); }
+            catch (Exception error) { handler.post(() -> message("Timeout report export failed")); }
         });
+    }
+    private String timeoutRetryText() {
+        String runId=settings.getString("timeoutRetryRun","");
+        QueueStore.TimeoutRetryReport report=queue.timeoutRetryReport(runId);
+        StringBuilder out=new StringBuilder("Retry Timeouts — Completed\n\nRetried: ").append(report.retried).append("\nRecovered: ").append(report.recovered).append("\nStill Failed: ").append(report.failed.size()).append("\n");
+        for(String[] item:report.failed)out.append("\n").append(item[0]).append(" — ").append(item[1]).append("\nhttps://www.instagram.com/").append(item[0]).append("/\n");
+        return out.toString();
+    }
+    private void showTimeoutRetryResults() {
+        String runId=settings.getString("timeoutRetryRun","");
+        if(runId.isEmpty()){message("No timeout retry results yet");return;}
+        String content=timeoutRetryText();
+        TextView body=text(content,14,Color.WHITE);body.setTextIsSelectable(true);android.text.util.Linkify.addLinks(body,android.text.util.Linkify.WEB_URLS);
+        ScrollView view=new ScrollView(this);view.addView(body);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Retry Timeouts — "+(settings.getBoolean("timeoutRetryActive",false)?"In Progress":"Completed"))
+            .setView(view).setPositiveButton("Export Timeout-Failed.txt",(d,w)->picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"Timeout-Failed.txt"),13))
+            .setNegativeButton("Close",null).create();
+        dialog.show();
     }
     private void openPhoto(String user) {
         if (!Identity.valid(user) || !queue.users(false).contains(user)) { message("Select an imported account with a local thumbnail"); return; }
@@ -237,6 +261,10 @@ public final class MainActivity extends Activity {
         StringBuilder failureSummary = new StringBuilder();
         for (Map.Entry<String, Integer> failure : queue.failures().entrySet()) failureSummary.append("\n").append(FailureText.label(failure.getKey())).append(": ").append(failure.getValue()).append(" (").append(failure.getKey()).append(")");
         status.setText(ScheduleStatus.text(settings,QueueControl.lock.get(),QueueControl.activeViews)+"\n"+detail + failureSummary);
+        String completedState=settings.getString("state","");String retryRun=settings.getString("timeoutRetryRun","");
+        if(completedState.equals("Retry Timeouts — Completed")&&!retryRun.isEmpty()&&!retryRun.equals(settings.getString("timeoutRetryShownRun",""))){
+            settings.edit().putString("timeoutRetryShownRun",retryRun).commit();handler.post(()->{if(!isFinishing()&&!isDestroyed())showTimeoutRetryResults();});
+        }
         cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;

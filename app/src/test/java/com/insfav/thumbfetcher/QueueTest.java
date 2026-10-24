@@ -22,6 +22,30 @@ public class QueueTest {
     @Test public void retryFailedSelectsOnlyFailed() {
         store.mark("example", "FAILED", "NETWORK_ERROR"); store.reset(store.users(true)); assertEquals(Collections.singletonList("example"), store.pending());
     }
+    @Test public void retryTimeoutsSelectsOnlyCompletedTimeoutFailuresAndOnlyOnce() {
+        store.mark("example","SKIPPED","WEBVIEW_TIMEOUT");
+        store.mark("valid_2","SKIPPED_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE");
+        assertEquals(1,store.prepareTimeoutRetries("run-1"));
+        assertEquals(Collections.singletonList("example"),store.timeoutRetryPending());
+        store.close();store=new QueueStore(context);store.recoverInterrupted();
+        assertEquals("Timeout retry must survive process restart",Collections.singletonList("example"),store.timeoutRetryPending());
+        store.finishTimeoutRetry("example","SKIPPED","WEBVIEW_TIMEOUT");
+        assertEquals(0,store.prepareTimeoutRetries("run-2"));
+        QueueStore.TimeoutRetryReport report=store.timeoutRetryReport("run-1");
+        assertEquals(1,report.retried);assertEquals(0,report.recovered);assertEquals("WEBVIEW_TIMEOUT",report.failed.get(0)[1]);
+        assertTrue("Unavailable pages are never timeout-retried",store.timeoutRetryPending().isEmpty());
+    }
+    @Test public void retryTimeoutReportPreservesDifferentSecondErrorAndSuccessIsRecovered() {
+        store.mark("example","FAILED","WEBVIEW_TIMEOUT");
+        store.mark("valid_2","SKIPPED","WEBVIEW_TIMEOUT");
+        assertEquals(2,store.prepareTimeoutRetries("run"));
+        store.finishTimeoutRetry("example","SUCCESS","VALID_WEBP");
+        store.finishTimeoutRetry("valid_2","FAILED","PROFILE_IMAGE_URL_MISSING");
+        QueueStore.TimeoutRetryReport report=store.timeoutRetryReport("run");
+        assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
+        assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_IMAGE_URL_MISSING",report.failed.get(0)[1]);
+        assertEquals(0,store.prepareTimeoutRetries("run-again"));
+    }
     @Test public void invalidImportPreservesOldQueue() {
         try { store.replace(ImportTest.parse("broken")); fail(); } catch (Exception expected) { }
         assertEquals(Arrays.asList("example", "valid_2"), store.users(false));
