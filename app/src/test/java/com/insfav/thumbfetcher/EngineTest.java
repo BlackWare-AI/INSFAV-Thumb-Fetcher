@@ -64,7 +64,7 @@ public class EngineTest {
         assertEquals(Collections.singletonList("synthetic_0"),calls);
         assertEquals("Completed state should reflect the one-off timeout pass","Retry Timeouts — Completed",prefs.getString("state",""));
         assertEquals(Integer.valueOf(1),queue.failures().get("WEBVIEW_NETWORK_ERROR"));
-        QueueStore.TimeoutRetryReport report=queue.timeoutRetryReport(prefs.getString("timeoutRetryRun",""));
+        QueueStore.RetryReport report=queue.timeoutRetryReport(prefs.getString("timeoutRetryRun",""));
         assertEquals(1,report.retried);assertEquals(0,report.recovered);assertEquals("WEBVIEW_NETWORK_ERROR",report.failed.get(0)[1]);
         assertEquals("Profile-not-found and existing-success rows remain unchanged",Integer.valueOf(1),queue.counts().get("SKIPPED_UNAVAILABLE"));
         assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
@@ -76,6 +76,25 @@ public class EngineTest {
         assertEquals(Collections.singletonList("synthetic_1"),queue.pending());
         assertEquals("Retry Timeouts — Completed",prefs.getString("state",""));
         assertEquals(0,queue.prepareTimeoutRetries("later"));
+    }
+    @Test public void retryMissingImagesOnlyRetriesTwoImageDiscoveryCodesAndPersistsLastOutcome() {
+        accounts(4);
+        queue.mark("synthetic_0","FAILED","PROFILE_IMAGE_URL_MISSING");
+        queue.mark("synthetic_1","SKIPPED","PROFILE_DATA_AMBIGUOUS");
+        queue.mark("synthetic_2","SKIPPED_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE");
+        queue.mark("synthetic_3","FAILED","WEBVIEW_TIMEOUT");
+        List<String> calls=new ArrayList<>();
+        engine(fake(user->{calls.add(user);if(user.equals("synthetic_1"))throw new ProfileProvider.Failure("PROFILE_PAGE_UNAVAILABLE",200,0,false,true);return pixels;})).run("retry_missing_images",false);
+        assertEquals(Arrays.asList("synthetic_0","synthetic_1"),calls);
+        assertEquals("Retry Missing Images — Completed",prefs.getString("state",""));
+        assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
+        assertEquals(Integer.valueOf(2),queue.counts().get("SKIPPED_UNAVAILABLE"));
+        assertEquals(Integer.valueOf(1),queue.counts().get("FAILED"));
+        QueueStore.RetryReport report=queue.missingImageRetryReport(prefs.getString("missingImageRetryRun",""));
+        assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals("PROFILE_PAGE_UNAVAILABLE",report.failed.get(0)[1]);
+        assertEquals(0,queue.prepareMissingImageRetries("later"));
+        assertEquals(1,queue.prepareTimeoutRetries("timeout-run"));
+        assertEquals("Only the untouched timeout remains eligible for Retry Timeouts",Collections.singletonList("synthetic_3"),queue.timeoutRetryPending());
     }
     @Test public void confirmedUnavailableTextGetsDedicatedPersistentSkipState() {
         accounts(2);

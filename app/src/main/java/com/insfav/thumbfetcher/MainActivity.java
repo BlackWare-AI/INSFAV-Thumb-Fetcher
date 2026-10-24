@@ -84,6 +84,9 @@ public final class MainActivity extends Activity {
             menu.getMenu().add("Retry Timeouts").setOnMenuItemClickListener(item -> { begin("retry_timeouts"); return true; });
             menu.getMenu().add("Timeout Retry Results").setOnMenuItemClickListener(item -> { showTimeoutRetryResults(); return true; });
             menu.getMenu().add("Export Timeout-Failed.txt").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Timeout-Failed.txt"), 13); return true; });
+            menu.getMenu().add("Retry Missing Images").setOnMenuItemClickListener(item -> { begin("retry_missing_images"); return true; });
+            menu.getMenu().add("Missing Images Retry Results").setOnMenuItemClickListener(item -> { showMissingImageRetryResults(); return true; });
+            menu.getMenu().add("Export Missing-Images-Failed.txt").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "Missing-Images-Failed.txt"), 14); return true; });
             menu.getMenu().add("Verify Thumbnail Index").setOnMenuItemClickListener(item -> { begin("verify_index"); return true; });
             menu.getMenu().add("Export Diagnostics").setOnMenuItemClickListener(item -> { picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, "INSFAV-Thumb-Fetcher-Diagnostics.txt"), 12); return true; });
             menu.getMenu().add("Export All Settings").setOnMenuItemClickListener(item->{settingsBackup.start(true);return true;});
@@ -110,7 +113,7 @@ public final class MainActivity extends Activity {
         WorkScheduler.cancel(this);
         { settings.edit().putBoolean("armed", true).putBoolean("userPaused", false).putString("blocked", "").commit(); WorkScheduler.recovery(this); }
         launchPending = true; update();
-        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.equals("retry_timeouts") ? "RETRY_TIMEOUTS" : "START_MISSING", 0); }
+        try { FetchService.request(this, action); log.log("QUEUE", action.equals("resume") ? "RESUME" : action.equals("failed") ? "RETRY_FAILED" : action.equals("retry_timeouts") ? "RETRY_TIMEOUTS" : action.equals("retry_missing_images") ? "RETRY_MISSING_IMAGES" : "START_MISSING", 0); }
         catch (RuntimeException error) { settings.edit().putString("blocked", "SYSTEM_RESTRICTED").commit(); message("Foreground service could not start"); }
         handler.postDelayed(() -> { launchPending = false; update(); }, 1000);
     }
@@ -208,14 +211,18 @@ public final class MainActivity extends Activity {
         }); else if (request == 13) io.execute(() -> {
             try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) { if (output == null) throw new IOException(); output.write(timeoutRetryText().getBytes(java.nio.charset.StandardCharsets.UTF_8)); handler.post(() -> message("Timeout-Failed.txt exported")); }
             catch (Exception error) { handler.post(() -> message("Timeout report export failed")); }
+        }); else if (request == 14) io.execute(() -> {
+            try (OutputStream output = getContentResolver().openOutputStream(uri, "wt")) { if (output == null) throw new IOException(); output.write(missingImageRetryText().getBytes(java.nio.charset.StandardCharsets.UTF_8)); handler.post(() -> message("Missing-Images-Failed.txt exported")); }
+            catch (Exception error) { handler.post(() -> message("Missing image report export failed")); }
         });
     }
     private String timeoutRetryText() {
         String runId=settings.getString("timeoutRetryRun","");
-        QueueStore.TimeoutRetryReport report=queue.timeoutRetryReport(runId);
-        StringBuilder out=new StringBuilder("Retry Timeouts — Completed\n\nRetried: ").append(report.retried).append("\nRecovered: ").append(report.recovered).append("\nStill Failed: ").append(report.failed.size()).append("\n");
-        for(String[] item:report.failed)out.append("\n").append(item[0]).append(" — ").append(item[1]).append("\nhttps://www.instagram.com/").append(item[0]).append("/\n");
-        return out.toString();
+        return RetryReportFormatter.format("Retry Timeouts",queue.timeoutRetryReport(runId));
+    }
+    private String missingImageRetryText() {
+        String runId=settings.getString("missingImageRetryRun","");
+        return RetryReportFormatter.format("Retry Missing Images",queue.missingImageRetryReport(runId));
     }
     private void showTimeoutRetryResults() {
         String runId=settings.getString("timeoutRetryRun","");
@@ -227,6 +234,15 @@ public final class MainActivity extends Activity {
             .setView(view).setPositiveButton("Export Timeout-Failed.txt",(d,w)->picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"Timeout-Failed.txt"),13))
             .setNegativeButton("Close",null).create();
         dialog.show();
+    }
+    private void showMissingImageRetryResults() {
+        String runId=settings.getString("missingImageRetryRun","");
+        if(runId.isEmpty()){message("No missing image retry results yet");return;}
+        TextView body=text(missingImageRetryText(),14,Color.WHITE);body.setTextIsSelectable(true);android.text.util.Linkify.addLinks(body,android.text.util.Linkify.WEB_URLS);
+        ScrollView view=new ScrollView(this);view.addView(body);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Retry Missing Images — "+(settings.getBoolean("missingImageRetryActive",false)?"In Progress":"Completed"))
+            .setView(view).setPositiveButton("Export Missing-Images-Failed.txt",(d,w)->picker(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"Missing-Images-Failed.txt"),14))
+            .setNegativeButton("Close",null).create();dialog.show();
     }
     private void openPhoto(String user) {
         if (!Identity.valid(user) || !queue.users(false).contains(user)) { message("Select an imported account with a local thumbnail"); return; }
@@ -264,6 +280,10 @@ public final class MainActivity extends Activity {
         String completedState=settings.getString("state","");String retryRun=settings.getString("timeoutRetryRun","");
         if(completedState.equals("Retry Timeouts — Completed")&&!retryRun.isEmpty()&&!retryRun.equals(settings.getString("timeoutRetryShownRun",""))){
             settings.edit().putString("timeoutRetryShownRun",retryRun).commit();handler.post(()->{if(!isFinishing()&&!isDestroyed())showTimeoutRetryResults();});
+        }
+        String missingRun=settings.getString("missingImageRetryRun","");
+        if(completedState.equals("Retry Missing Images — Completed")&&!missingRun.isEmpty()&&!missingRun.equals(settings.getString("missingImageRetryShownRun",""))){
+            settings.edit().putString("missingImageRetryShownRun",missingRun).commit();handler.post(()->{if(!isFinishing()&&!isDestroyed())showMissingImageRetryResults();});
         }
         cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");

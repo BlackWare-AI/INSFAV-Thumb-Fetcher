@@ -31,7 +31,7 @@ public class QueueTest {
         assertEquals("Timeout retry must survive process restart",Collections.singletonList("example"),store.timeoutRetryPending());
         store.finishTimeoutRetry("example","SKIPPED","WEBVIEW_TIMEOUT");
         assertEquals(0,store.prepareTimeoutRetries("run-2"));
-        QueueStore.TimeoutRetryReport report=store.timeoutRetryReport("run-1");
+        QueueStore.RetryReport report=store.timeoutRetryReport("run-1");
         assertEquals(1,report.retried);assertEquals(0,report.recovered);assertEquals("WEBVIEW_TIMEOUT",report.failed.get(0)[1]);
         assertTrue("Unavailable pages are never timeout-retried",store.timeoutRetryPending().isEmpty());
     }
@@ -41,10 +41,37 @@ public class QueueTest {
         assertEquals(2,store.prepareTimeoutRetries("run"));
         store.finishTimeoutRetry("example","SUCCESS","VALID_WEBP");
         store.finishTimeoutRetry("valid_2","FAILED","PROFILE_IMAGE_URL_MISSING");
-        QueueStore.TimeoutRetryReport report=store.timeoutRetryReport("run");
+        QueueStore.RetryReport report=store.timeoutRetryReport("run");
         assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
         assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_IMAGE_URL_MISSING",report.failed.get(0)[1]);
         assertEquals(0,store.prepareTimeoutRetries("run-again"));
+    }
+    @Test public void retryMissingImagesSelectsOnlyEligibleErrorsAndSurvivesRestartOnce() {
+        store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
+        store.mark("valid_2","SKIPPED","PROFILE_DATA_AMBIGUOUS");
+        BackupParser.Result more=new BackupParser.Result();more.users.add("example");more.users.add("valid_2");more.users.add("unavailable");more.users.add("pending_user");store.replace(more);
+        store.mark("unavailable","SKIPPED_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE");
+        store.mark("pending_user","PENDING","PENDING");
+        assertEquals(2,store.prepareMissingImageRetries("missing-run-1"));
+        assertEquals(Arrays.asList("example","valid_2"),store.missingImageRetryPending());
+        assertEquals("Normal missing/resume work must leave retry-reserved rows alone",Collections.singletonList("pending_user"),store.normalPending());
+        store.close();store=new QueueStore(context);store.recoverInterrupted();
+        assertEquals(Arrays.asList("example","valid_2"),store.missingImageRetryPending());
+        store.finishMissingImageRetry("example","SUCCESS","VALID_WEBP");
+        store.finishMissingImageRetry("valid_2","FAILED","PROFILE_PAGE_UNAVAILABLE");
+        assertEquals(0,store.prepareMissingImageRetries("missing-run-2"));
+        QueueStore.RetryReport report=store.missingImageRetryReport("missing-run-1");
+        assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
+        assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_PAGE_UNAVAILABLE",report.failed.get(0)[1]);
+        assertEquals("Retry Missing Images — Completed\n\nRetried: 2\nRecovered: 1\nStill Failed: 1\n\nvalid_2 — PROFILE_PAGE_UNAVAILABLE\nhttps://www.instagram.com/valid_2/\n",RetryReportFormatter.format("Retry Missing Images",report));
+        assertEquals("Unavailable pages remain unavailable",Integer.valueOf(1),store.counts().get("SKIPPED_UNAVAILABLE"));
+        assertEquals(Collections.singletonList("pending_user"),store.pending());
+    }
+    @Test public void validIndexedImageIsNotSelectedForMissingImageRetry() {
+        store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
+        store.image(new QueueStore.Image("example","content://selected/thumbs","example.webp",100,256,256,1,true));
+        assertEquals(0,store.prepareMissingImageRetries("missing-run"));
+        assertTrue(store.missingImageRetryPending().isEmpty());
     }
     @Test public void invalidImportPreservesOldQueue() {
         try { store.replace(ImportTest.parse("broken")); fail(); } catch (Exception expected) { }
@@ -113,6 +140,17 @@ public class QueueTest {
         Map<String,Integer> counts=new HashMap<>();counts.put("SUCCESS",2);counts.put("EXISTING",1);counts.put("FAILED",1);counts.put("SKIPPED",1);counts.put("RETRY_LATER",2);
         DownloadNotification.Progress progress=new DownloadNotification.Progress(counts,"Downloading","");
         assertEquals(7,progress.total);assertEquals(5,progress.done);assertEquals(71,progress.percent);assertEquals("Downloading",progress.status);
+    }
+    @Test public void diagnosticsSeparateConfiguredEffectiveActiveAndPeakViews() throws Exception {
+        SessionState.prefs(context).edit().putInt("concurrentWebViews",5).putInt("effectiveViewsLastRun",4).putInt("peakViewsLastRun",3).commit();
+        QueueControl.lock.set(false);QueueControl.activeViews=0;QueueControl.peakViews=0;
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();new Diagnostics(context).export(bytes);
+        String report=bytes.toString("UTF-8");
+        assertTrue(report.contains("Configured WebViews: 5"));assertTrue(report.contains("Effective WebViews: 4"));
+        assertTrue(report.contains("Active WebViews: 0"));assertTrue(report.contains("Peak Active WebViews: 3"));
+        QueueControl.webViewStarted(1);QueueControl.webViewStarted(5);QueueControl.webViewStopped(0);
+        assertEquals(0,QueueControl.activeViews);assertEquals(5,QueueControl.peakViews);
+        QueueControl.activeViews=0;QueueControl.peakViews=0;
     }
 
 }

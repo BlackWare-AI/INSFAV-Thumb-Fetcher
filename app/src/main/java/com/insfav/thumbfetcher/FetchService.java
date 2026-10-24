@@ -17,7 +17,7 @@ public final class FetchService extends Service {
         if (intent == null) { stopSelf(id); return START_NOT_STICKY; }
         String action = intent.getAction();
         if ("pause".equals(action) || "stop".equals(action)) { QueueControl.pause(this, "stop".equals(action)); if (!owns) stopSelf(id); return START_NOT_STICKY; }
-        if (!("missing".equals(action) || "failed".equals(action) || "retry_timeouts".equals(action) || "resume".equals(action) || "verify_index".equals(action))) { stopSelf(id); return START_NOT_STICKY; }
+        if (!("missing".equals(action) || "failed".equals(action) || "retry_timeouts".equals(action) || "retry_missing_images".equals(action) || "resume".equals(action) || "verify_index".equals(action))) { stopSelf(id); return START_NOT_STICKY; }
         if (owns || !QueueControl.lock.compareAndSet(false, true)) { if (!owns) stopSelf(id); return START_NOT_STICKY; }
         owns = true; running = true; QueueControl.requested = false;
         try {

@@ -173,7 +173,7 @@ final class WebViewProfileProvider implements ProfileProvider {
                     if (views.size() >= ceiling) { fail(new Failure("WEBVIEW_POOL_CAPACITY")); return; }
                     view = new WebView(context); views.add(view); createdCount++; log.log("POOL", "VIEW_CREATED", views.size());
                 } else { reusedCount++; log.log("POOL", "VIEW_REUSED", views.size()); }
-                counted = true; QueueControl.activeViews = ++activeCount;
+                counted = true; QueueControl.webViewStarted(++activeCount);
                 view.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 view.setSaveEnabled(false);
                 // Provide a viewport without attaching a window or showing browser content.
@@ -333,7 +333,7 @@ final class WebViewProfileProvider implements ProfileProvider {
         }
         void complete() {
             if (completed) return;
-            completed = true; if (counted) { counted = false; QueueControl.activeViews = Math.max(0, --activeCount); } main.removeCallbacksAndMessages(token); log.log("WEBVIEW", "CLEANED", 0); done.countDown();
+            completed = true; if (counted) { counted = false; QueueControl.webViewStopped(--activeCount); } main.removeCallbacksAndMessages(token); log.log("WEBVIEW", "CLEANED", 0); done.countDown();
         }
     }
 }
