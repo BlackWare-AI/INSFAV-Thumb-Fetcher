@@ -2,7 +2,7 @@
 
 # INSFAV Thumb Fetcher
 
-Standalone native Android helper, version **0.5.0** (version code 8). Java, Android 8.0/API 26+, English UI, AMOLED black. No analytics or account registration.
+Standalone native Android helper, version **0.5.0** (version code 10). Java, Android 8.0/API 26+, English UI, AMOLED black. No analytics or account registration.
 
 ## Preserved reference
 
@@ -22,7 +22,8 @@ It is limited to profile pictures. It does not download posts, stories, or video
 4. Set **Minimum Delay** and **Maximum Delay**, **Start Time** and **End Time**, and optionally **Concurrent WebViews** (1–30; default 1). Save Settings. A higher pool setting is only a ceiling; the app may lower it to fit device memory. Keep concurrency at 1 unless the device can handle more.
 5. Choose **Start Missing**. The queue and output-file index persist privately, so re-importing the same backup does not discard completed work. Start Missing schedules only pending or rate-limit-deferred accounts; previously successful or existing thumbnails are not re-opened or re-validated on each run. The output folder is fully indexed on first use, after a detected external folder change, or with **More → Verify Thumbnail Index**. Use that explicit verification if files were changed by a storage provider that does not report folder changes. Valid existing WebP thumbnails are kept. Use **Pause / Resume** to hold and continue, or **Stop** to stop safely. Failed and skipped accounts can be retried later using **Retry Failed**.
 6. Check live counts for completed, failed, skipped, remaining, active WebViews, indexed thumbnails and out-of-target image sizes. Notifications show queue progress and terminal status. Missing or unavailable pages are skipped with a reason so one bad account does not stop the batch. Login challenges, CAPTCHA, rate limits, or explicit access restrictions pause new work; Retry-After is honored and background continuation is scheduled within working hours when enabled. Android may defer scheduled work.
-7. Existing valid 128 × 128 and 256 × 256 thumbnails are always preserved. Legacy refresh has been removed. Use **More → Export All Settings / Import All Settings** for a password-encrypted portable backup of preferences and cookies; account lists are excluded. To view a profile photo, tap a thumbnail or use **More → Open Profile Photo**. The local thumbnail appears first; if offered and available, a larger current image is fetched in memory. It is not saved permanently.
+7. If accounts ended specifically with `WEBVIEW_TIMEOUT`, use **More → Retry Timeouts**. This selects only completed timeout failures and grants each one a single additional attempt. Successful files use the normal WebP writer. Successful, pending and `PROFILE_PAGE_UNAVAILABLE` accounts are excluded. The attempt state survives process restarts, and another error is recorded under its actual code. At completion, the app shows recovered and still-failed counts plus profile links. Use **More → Export Timeout-Failed.txt** to save the remaining failures and their error codes. **More → Retry Failed** remains separate.
+8. Existing valid 128 × 128 and 256 × 256 thumbnails are always preserved. Legacy refresh has been removed. Use **More → Export All Settings / Import All Settings** for a password-encrypted portable backup of preferences and cookies; account lists are excluded. To view a profile photo, tap a thumbnail or use **More → Open Profile Photo**. The local thumbnail appears first; if offered and available, a larger current image is fetched in memory. It is not saved permanently.
 
 The backup format parser supports the three INSFAV JSON layouts documented below and has a 32 MiB input limit. Only usernames are normalized for matching; the source JSON and collection/account order are left untouched.
 
@@ -46,7 +47,7 @@ The authoritative cookie jar is AES-GCM encrypted with Android Keystore in priva
 
 Android Studio / JDK 17 / Gradle Wrapper 8.13; compile SDK 35, target SDK 37. `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest` and `node --test tools/profile-probe.test.cjs`.
 
-CI builds debug and R8/resource-shrunk unsigned release APKs. It also launches the debug APK and tests real Chromium pool reuse on anonymous **offline fixtures**, for requested sizes 1, 2, 5, 10 and 30 under the emulator's effective RAM cap. These checks do not establish live Instagram or physical-device stability. Default concurrency stays 1. See [TESTING.md](TESTING.md).
+CI builds debug and R8/resource-shrunk release APKs. The build 10 release workflow requires a persistent Android signing key in GitHub Actions secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) and verifies the APK signature before publishing. Use the same signing key for future in-place updates. CI also launches the debug APK and tests real Chromium pool reuse on anonymous **offline fixtures**, for requested sizes 1, 2, 5, 10 and 30 under the emulator's effective RAM cap. These checks do not establish live Instagram or physical-device stability. Default concurrency stays 1. See [TESTING.md](TESTING.md).
 
 Direct runtime dependency: AndroidX WorkManager 2.10.1 and its transitive AndroidX dependencies. Platform WebView/graphics/network APIs handle the rest. No additional runtime libraries were added for 0.5.0.
 

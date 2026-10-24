@@ -53,6 +53,30 @@ public class EngineTest {
         assertEquals(Integer.valueOf(codes.length),queue.counts().get("SKIPPED")); assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
         assertEquals("",prefs.getString("blocked","")); assertTrue(queue.pending().isEmpty());
     }
+    @Test public void retryTimeoutsFetchesOnlyOriginalTimeoutsAndPreservesTheRetryError() {
+        accounts(4);
+        queue.mark("synthetic_0","SKIPPED","WEBVIEW_TIMEOUT");
+        queue.mark("synthetic_1","SKIPPED_UNAVAILABLE","PROFILE_PAGE_UNAVAILABLE");
+        queue.mark("synthetic_2","SUCCESS","VALID_WEBP");
+        queue.mark("synthetic_3","FAILED","PROFILE_DATA_MISSING");
+        List<String> calls=new ArrayList<>();
+        engine(fake(user->{calls.add(user);throw new ProfileProvider.Failure("WEBVIEW_NETWORK_ERROR",0,0,false);})).run("retry_timeouts",false);
+        assertEquals(Collections.singletonList("synthetic_0"),calls);
+        assertEquals("Completed state should reflect the one-off timeout pass","Retry Timeouts — Completed",prefs.getString("state",""));
+        assertEquals(Integer.valueOf(1),queue.failures().get("WEBVIEW_NETWORK_ERROR"));
+        QueueStore.TimeoutRetryReport report=queue.timeoutRetryReport(prefs.getString("timeoutRetryRun",""));
+        assertEquals(1,report.retried);assertEquals(0,report.recovered);assertEquals("WEBVIEW_NETWORK_ERROR",report.failed.get(0)[1]);
+        assertEquals("Profile-not-found and existing-success rows remain unchanged",Integer.valueOf(1),queue.counts().get("SKIPPED_UNAVAILABLE"));
+        assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
+    }
+    @Test public void retryTimeoutSuccessWritesThumbnailAndDoesNotRetryAgain() {
+        accounts(2);queue.mark("synthetic_0","SKIPPED","WEBVIEW_TIMEOUT");queue.mark("synthetic_1","PENDING","PENDING");
+        AtomicInteger calls=new AtomicInteger();engine(fake(user->{calls.incrementAndGet();return pixels;})).run("retry_timeouts",false);
+        assertEquals(1,calls.get());assertEquals(Integer.valueOf(1),queue.counts().get("SUCCESS"));
+        assertEquals(Collections.singletonList("synthetic_1"),queue.pending());
+        assertEquals("Retry Timeouts — Completed",prefs.getString("state",""));
+        assertEquals(0,queue.prepareTimeoutRetries("later"));
+    }
     @Test public void confirmedUnavailableTextGetsDedicatedPersistentSkipState() {
         accounts(2);
         engine(fake(user -> {

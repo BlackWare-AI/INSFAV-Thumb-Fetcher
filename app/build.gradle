@@ -6,12 +6,22 @@ android {
         applicationId 'com.insfav.thumbfetcher'
         minSdk 26
         targetSdk 37
-        versionCode 9
+        versionCode 10
         versionName '0.5.0'
         testInstrumentationRunner 'com.insfav.thumbfetcher.PoolInstrumentation'
     }
+    signingConfigs {
+        release {
+            def signingPath = System.getenv('ANDROID_KEYSTORE_PATH')
+            if (signingPath != null && !signingPath.isEmpty()) storeFile file(signingPath)
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: ''
+            keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: ''
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: ''
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

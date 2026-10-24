@@ -1,4 +1,4 @@
-name: Publish INSFAV Thumb Fetcher 0.5.0 build 9
+name: Publish INSFAV Thumb Fetcher 0.5.0 build 10
 
 on:
   push:
@@ -6,10 +6,12 @@ on:
     paths:
       - '.github/workflows/publish-050.yml'
       - 'app/build.gradle'
-      - 'app/src/main/assets/profile-probe.js'
       - 'app/src/main/java/com/insfav/thumbfetcher/**'
       - 'app/src/test/java/com/insfav/thumbfetcher/**'
-      - 'tests/probe-classification.cjs'
+      - 'README.md'
+      - 'TESTING.md'
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -18,7 +20,14 @@ jobs:
   verify-and-publish:
     if: github.repository == 'BlackWare-AI/INSFAV-Thumb-Fetcher'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,47 +50,51 @@ jobs:
           from pathlib import Path
           import re
           build = Path('app/build.gradle').read_text()
-          assert re.search(r"versionCode\s+9\b", build)
+          assert re.search(r"versionCode\s+10\b", build)
           assert re.search(r"versionName\s+'0\.5\.0'", build)
           PY
-      - name: Run offline probe fixtures and Android verification
+      - name: Run tests and lint
         run: |
           node --test tools/profile-probe.test.cjs tests/probe-classification.cjs
           ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon --console=plain
-      - name: Verify APK metadata and create release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+      - name: Require persistent release signing key
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
-          apk=app/build/outputs/apk/debug/app-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.insfav.thumbfetcher' versionCode='9' versionName='0.5.0'"
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then echo "Missing required GitHub Actions secret: $name" >&2; exit 1; fi
+          done
+          key="$RUNNER_TEMP/insfav-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key"
+          test -s "$key"
+          echo "ANDROID_KEYSTORE_PATH=$key" >> "$GITHUB_ENV"
+      - name: Build and verify update-installable release APK
+        if: github.event_name == 'push'
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon --console=plain
+          apk=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.insfav.thumbfetcher' versionCode='10' versionName='0.5.0'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           size=$(stat -c%s "$apk")
           sha=$(sha256sum "$apk" | cut -d ' ' -f 1)
-          echo "$sha  INSFAV-Thumb-Fetcher-0.5.0-build9.apk" > SHA256SUMS
-          cp "$apk" INSFAV-Thumb-Fetcher-0.5.0-build9.apk
+          cp "$apk" INSFAV-Thumb-Fetcher-0.5.0-build10.apk
+          echo "$sha  INSFAV-Thumb-Fetcher-0.5.0-build10.apk" > SHA256SUMS
           cat > RELEASE-NOTES.md <<EOF
-          # INSFAV Thumb Fetcher 0.5.0 (build 9)
+          # INSFAV Thumb Fetcher 0.5.0 (build 10)
 
-          This release keeps the app version at 0.5.0 and increments Android build number to 9.
+          The application version remains 0.5.0; Android versionCode is 10. The release APK is signed using the persistent repository release key so it can update an installation signed with that same key.
 
-          - Closed/unavailable page text in English and Turkish is detected before canonical and profile-data decisions, immediately producing `PROFILE_PAGE_UNAVAILABLE` with `TEXT_MATCH` evidence.
-          - A page with an account-bound profile image candidate continues normal image processing.
-          - Confirmed unavailable pages are recorded as `SKIPPED_UNAVAILABLE`; network, timeout, rate-limit, cookie, login and challenge handling is unchanged.
-          - The single shared WebView probe is used for standard and high-resolution retrieval modes.
+          - Adds a persistent, one-time Retry Timeouts action restricted to accounts whose last eligible result was WEBVIEW_TIMEOUT.
+          - Never selects successful, pending, or PROFILE_PAGE_UNAVAILABLE accounts for this action.
+          - Preserves the real second-attempt error code, writes successful WebP files through the existing output path, and supports pause/resume after process interruption.
+          - Shows recovered/failed totals and Instagram profile links; exports remaining failures as Timeout-Failed.txt.
+          - Existing Start Missing, Retry Failed, WebView pool and thumbnail indexing paths remain separate.
 
           APK size: ${size} bytes. SHA-256: `${sha}`.
 
           Automated tests use offline fixtures. No live Instagram session or physical-device test is represented by this release.
           EOF
-          if gh release view v0.5.0 >/dev/null 2>&1; then
-            echo 'v0.5.0 release already exists; preserving it without replacement.'
-            exit 0
-          fi
-          if gh api "repos/$GH_REPO/git/ref/tags/v0.5.0" >/dev/null 2>&1; then
-            echo 'v0.5.0 tag already exists without a release; refusing to overwrite it.'
-            exit 1
-          fi
-          gh release create v0.5.0 INSFAV-Thumb-Fetcher-0.5.0-build9.apk SHA256SUMS \
-            --title "INSFAV Thumb Fetcher 0.5.0 (build 9)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"
+          tag=v0.5.0-build10
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; refusing to overwrite it."; exit 1; fi
+          gh release create "$tag" INSFAV-Thumb-Fetcher-0.5.0-build10.apk SHA256SUMS --title "INSFAV Thumb Fetcher 0.5.0 (build 10)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"
