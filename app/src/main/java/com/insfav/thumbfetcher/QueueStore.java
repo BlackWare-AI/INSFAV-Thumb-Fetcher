@@ -170,6 +170,8 @@ final class QueueStore extends SQLiteOpenHelper {
         return new RetryReport(retried,recovered,failed);
     }
     List<String> pending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1"); }
+    /** Normal runs must not consume accounts reserved for an interrupted one-off retry. */
+    List<String> normalPending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1 AND timeout_retry_state!='PENDING' AND missing_retry_state!='PENDING'"); }
     List<String> retryable() { return select("status IN ('FAILED','SKIPPED','SKIPPED_UNAVAILABLE','RETRY_LATER')"); }
     private List<String> select(String where) {
         ArrayList<String> users=new ArrayList<>();
