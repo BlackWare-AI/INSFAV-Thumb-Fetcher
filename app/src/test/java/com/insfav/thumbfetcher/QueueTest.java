@@ -54,6 +54,7 @@ public class QueueTest {
         store.mark("pending_user","PENDING","PENDING");
         assertEquals(2,store.prepareMissingImageRetries("missing-run-1"));
         assertEquals(Arrays.asList("example","valid_2"),store.missingImageRetryPending());
+        assertEquals("Normal missing/resume work must leave retry-reserved rows alone",Collections.singletonList("pending_user"),store.normalPending());
         store.close();store=new QueueStore(context);store.recoverInterrupted();
         assertEquals(Arrays.asList("example","valid_2"),store.missingImageRetryPending());
         store.finishMissingImageRetry("example","SUCCESS","VALID_WEBP");
@@ -139,6 +140,17 @@ public class QueueTest {
         Map<String,Integer> counts=new HashMap<>();counts.put("SUCCESS",2);counts.put("EXISTING",1);counts.put("FAILED",1);counts.put("SKIPPED",1);counts.put("RETRY_LATER",2);
         DownloadNotification.Progress progress=new DownloadNotification.Progress(counts,"Downloading","");
         assertEquals(7,progress.total);assertEquals(5,progress.done);assertEquals(71,progress.percent);assertEquals("Downloading",progress.status);
+    }
+    @Test public void diagnosticsSeparateConfiguredEffectiveActiveAndPeakViews() throws Exception {
+        SessionState.prefs(context).edit().putInt("concurrentWebViews",5).putInt("effectiveViewsLastRun",4).putInt("peakViewsLastRun",3).commit();
+        QueueControl.lock.set(false);QueueControl.activeViews=0;QueueControl.peakViews=0;
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();new Diagnostics(context).export(bytes);
+        String report=bytes.toString("UTF-8");
+        assertTrue(report.contains("Configured WebViews: 5"));assertTrue(report.contains("Effective WebViews: 4"));
+        assertTrue(report.contains("Active WebViews: 0"));assertTrue(report.contains("Peak Active WebViews: 3"));
+        QueueControl.webViewStarted(1);QueueControl.webViewStarted(5);QueueControl.webViewStopped(0);
+        assertEquals(0,QueueControl.activeViews);assertEquals(5,QueueControl.peakViews);
+        QueueControl.activeViews=0;QueueControl.peakViews=0;
     }
 
 }
