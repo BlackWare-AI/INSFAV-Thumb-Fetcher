@@ -49,6 +49,7 @@ final class QueueEngine {
             if (System.currentTimeMillis() < settings.getLong("retryAt", 0)) { block("RATE_LIMITED"); return; }
             if ("RATE_LIMITED".equals(settings.getString("blocked", ""))) settings.edit().putString("blocked", "").commit();
             boolean timeoutRetry = "retry_timeouts".equals(action) || ("resume".equals(action) && settings.getBoolean("timeoutRetryActive", false));
+            boolean missingImageRetry = "retry_missing_images".equals(action) || ("resume".equals(action) && !timeoutRetry && settings.getBoolean("missingImageRetryActive", false));
             if ("retry_timeouts".equals(action)) {
                 String runId=Long.toString(System.currentTimeMillis());
                 int selected=queue.prepareTimeoutRetries(runId);
@@ -56,15 +57,22 @@ final class QueueEngine {
                 log.log("QUEUE", "RETRY_TIMEOUTS_SELECTED", selected);
                 if (selected == 0) { settings.edit().putBoolean("armed",false).commit(); state("Retry Timeouts — Completed"); return; }
             }
+            if ("retry_missing_images".equals(action)) {
+                String runId=Long.toString(System.currentTimeMillis());
+                int selected=queue.prepareMissingImageRetries(runId);
+                settings.edit().putString("missingImageRetryRun",runId).putBoolean("missingImageRetryActive",selected>0).putLong("missingImageRetryStartedAt",System.currentTimeMillis()).commit();
+                log.log("QUEUE","RETRY_MISSING_IMAGES_SELECTED",selected);
+                if(selected==0){settings.edit().putBoolean("armed",false).commit();state("Retry Missing Images — Completed");return;}
+            }
             if ("missing".equals(action)) queue.prepareMissing();
             else if ("failed".equals(action)) queue.reset(queue.retryable());
             RunPolicy policy = RunPolicy.read(settings);
             if (!policy.contains(ZonedDateTime.now())) { state("Paused — Outside Schedule"); return; }
             state("Starting — Loading persistent queue and thumbnail index");
             OutputFolder output = new OutputFolder(context, settings.getString("tree", ""), queue, "verify_index".equals(action));
-            List<String> targets = timeoutRetry ? queue.timeoutRetryPending() : queue.pending();
+            List<String> targets = timeoutRetry ? queue.timeoutRetryPending() : missingImageRetry ? queue.missingImageRetryPending() : queue.pending();
             int limit = single ? 1 : capacity.applyAsInt(ConcurrencyPolicy.validate(settings.getInt("concurrentWebViews", 1)));
-            QueueControl.effectiveViews = limit; QueueControl.memoryPressure = false;
+            QueueControl.effectiveViews = limit; QueueControl.peakViews = 0; QueueControl.memoryPressure = false;
             log.log("POOL", "REQUESTED_LIMIT", settings.getInt("concurrentWebViews", 1)); log.log("POOL", "EFFECTIVE_LIMIT", limit);
             workers = Executors.newFixedThreadPool(limit);
             CompletionService<Result> completed = new ExecutorCompletionService<>(workers);
@@ -88,7 +96,7 @@ final class QueueEngine {
                     // Existing-file checks do not consume a network launch slot.
                     output.recover(filename);
                     if (output.valid(filename)) {
-                        if(timeoutRetry)queue.finishTimeoutRetry(user,"EXISTING","VALID_WEBP");else queue.mark(user, "EXISTING", "VALID_WEBP"); index++; state("Checking existing thumbnails"); continue;
+                    if(timeoutRetry)queue.finishTimeoutRetry(user,"EXISTING","VALID_WEBP");else if(missingImageRetry)queue.finishMissingImageRetry(user,"EXISTING","VALID_WEBP");else queue.mark(user, "EXISTING", "VALID_WEBP"); index++; state("Checking existing thumbnails"); continue;
                     }
                     if (System.currentTimeMillis() >= next) {
                         if(!queue.claim(user)){index++;continue;}index++; launches++; inFlight.add(user);QueueControl.activeAccounts=inFlight.size();QueueControl.peakAccounts=Math.max(QueueControl.peakAccounts,QueueControl.activeAccounts);
@@ -116,7 +124,7 @@ final class QueueEngine {
                 if (result.failure == null) {
                     boolean wrote = output.write(Identity.outputFilename(result.user), result.bytes);
                     result.bytes = null;
-                    if(timeoutRetry)queue.finishTimeoutRetry(result.user,wrote?"SUCCESS":"EXISTING","VALID_WEBP");else queue.mark(result.user, wrote ? "SUCCESS" : "EXISTING", "VALID_WEBP");
+                    if(timeoutRetry)queue.finishTimeoutRetry(result.user,wrote?"SUCCESS":"EXISTING","VALID_WEBP");else if(missingImageRetry)queue.finishMissingImageRetry(result.user,wrote?"SUCCESS":"EXISTING","VALID_WEBP");else queue.mark(result.user, wrote ? "SUCCESS" : "EXISTING", "VALID_WEBP");
                     settings.edit().putString("previewUser", result.user).commit();
                     log.log("PROFILE", wrote ? "SUCCESS" : "EXISTING", 0);
                 } else {
@@ -125,7 +133,7 @@ final class QueueEngine {
                     if (error.code.equals("REQUEST_CANCELLED")) continue; // Leave pending for a manual resume.
                     queue.attempted(result.user);
                     String resultStatus=timeoutRetry&&error.code.equals("WEBVIEW_TIMEOUT")?"FAILED":FailurePolicy.skip(error) ? (FailurePolicy.confirmedUnavailable(error) ? "SKIPPED_UNAVAILABLE" : "SKIPPED") : error.retryAt>0?"RETRY_LATER":"FAILED";
-                    if(timeoutRetry)queue.finishTimeoutRetry(result.user,resultStatus,error.code);else queue.mark(result.user,resultStatus,error.code);
+                    if(timeoutRetry)queue.finishTimeoutRetry(result.user,resultStatus,error.code);else if(missingImageRetry)queue.finishMissingImageRetry(result.user,resultStatus,error.code);else queue.mark(result.user,resultStatus,error.code);
                     log.log("PROFILE", error.code, error.http);
                     if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).putInt("blockedHttp",error.http).commit();
                     if (FailurePolicy.pause(error)) { block(error.code); blocked = true; break; }
@@ -139,6 +147,7 @@ final class QueueEngine {
             if (interrupted()) state(QueueControl.requested ? QueueControl.requestedState : cancelledState);
             else if (!blocked && hoursEnded) state("Paused — Outside Schedule");
             else if (!blocked && timeoutRetry && queue.timeoutRetryPending().isEmpty()) { settings.edit().putBoolean("timeoutRetryActive", false).putBoolean("armed",false).commit(); state("Retry Timeouts — Completed"); }
+            else if (!blocked && missingImageRetry && queue.missingImageRetryPending().isEmpty()) { settings.edit().putBoolean("missingImageRetryActive",false).putBoolean("armed",false).commit();state("Retry Missing Images — Completed"); }
             else if (!blocked && queue.pending().isEmpty()) { settings.edit().putBoolean("armed", false).commit(); state("Completed"); }
             else if (!blocked) state("Waiting for next scheduled profile");
         } catch (ProfileProvider.Failure error) { if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).commit(); block(error.code); log.log("COOKIE", error.code, error.http); }
@@ -150,6 +159,7 @@ final class QueueEngine {
             ProfileProvider current = provider; if (current != null) current.cancel();
             if (workers != null) { workers.shutdownNow(); try { workers.awaitTermination(5, TimeUnit.SECONDS); } catch (InterruptedException error) { Thread.currentThread().interrupt(); } }
             if (current != null) current.close();
+            settings.edit().putInt("peakViewsLastRun",QueueControl.peakViews).putInt("effectiveViewsLastRun",QueueControl.effectiveViews).commit();
             QueueControl.activeViews = 0; QueueControl.activeAccounts=0; QueueControl.current = ""; QueueControl.etaSeconds = -1;
             if (QueueControl.requested) state(QueueControl.requestedState);
         }
