@@ -42,10 +42,11 @@ public class QueueTest {
         assertEquals(2,store.prepareTimeoutRetries("run"));
         store.finishTimeoutRetry("example","SUCCESS","VALID_WEBP");
         store.finishTimeoutRetry("valid_2","FAILED","PROFILE_IMAGE_URL_MISSING");
+        assertEquals(0,store.prepareTimeoutRetries("run-again"));
+        store.mark("valid_2","FAILED","LATER_MANUAL_ERROR");
         QueueStore.RetryReport report=store.timeoutRetryReport("run");
         assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
         assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_IMAGE_URL_MISSING",report.failed.get(0)[1]);
-        assertEquals(0,store.prepareTimeoutRetries("run-again"));
     }
     @Test public void retryMissingImagesSelectsOnlyEligibleErrorsAndSurvivesRestartOnce() {
         store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
@@ -61,6 +62,8 @@ public class QueueTest {
         store.finishMissingImageRetry("example","SUCCESS","VALID_WEBP");
         store.finishMissingImageRetry("valid_2","FAILED","PROFILE_PAGE_UNAVAILABLE");
         assertEquals(0,store.prepareMissingImageRetries("missing-run-2"));
+        store.mark("valid_2","FAILED","LATER_MANUAL_ERROR");
+        store.close();store=new QueueStore(context);
         QueueStore.RetryReport report=store.missingImageRetryReport("missing-run-1");
         assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
         assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_PAGE_UNAVAILABLE",report.failed.get(0)[1]);
