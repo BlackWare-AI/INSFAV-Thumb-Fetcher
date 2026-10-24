@@ -1,4 +1,5 @@
 plugins { id 'com.android.application' }
+def releaseSigningPath = System.getenv('ANDROID_KEYSTORE_PATH')
 android {
     namespace 'com.insfav.thumbfetcher'
     compileSdk 35
@@ -11,17 +12,18 @@ android {
         testInstrumentationRunner 'com.insfav.thumbfetcher.PoolInstrumentation'
     }
     signingConfigs {
-        release {
-            def signingPath = System.getenv('ANDROID_KEYSTORE_PATH')
-            if (signingPath != null && !signingPath.isEmpty()) storeFile file(signingPath)
+        if (releaseSigningPath != null && !releaseSigningPath.isEmpty()) {
+          release {
+            storeFile file(releaseSigningPath)
             storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: ''
             keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: ''
             keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: ''
+          }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (releaseSigningPath != null && !releaseSigningPath.isEmpty()) signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
