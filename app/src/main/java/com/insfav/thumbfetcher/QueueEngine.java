@@ -42,7 +42,7 @@ final class QueueEngine {
         Diagnostics log = new Diagnostics(context);
         ExecutorService workers = null;
         String generation = settings.getString("cookieGeneration", "");
-        boolean hoursEnded = false, blocked = false;
+        boolean hoursEnded = false, blocked = false, metricsStarted = false;
         try (QueueStore queue = new QueueStore(context)) {
             queue.recoverInterrupted();
             if ("verify_index".equals(action)) { state("Starting — Verifying thumbnail index"); OutputFolder checked=new OutputFolder(context,settings.getString("tree",""),queue,true);state("Paused — Thumbnail index verified");return; }
@@ -70,9 +70,9 @@ final class QueueEngine {
             if (!policy.contains(ZonedDateTime.now())) { state("Paused — Outside Schedule"); return; }
             state("Starting — Loading persistent queue and thumbnail index");
             OutputFolder output = new OutputFolder(context, settings.getString("tree", ""), queue, "verify_index".equals(action));
-            List<String> targets = timeoutRetry ? queue.timeoutRetryPending() : missingImageRetry ? queue.missingImageRetryPending() : queue.pending();
+            List<String> targets = timeoutRetry ? queue.timeoutRetryPending() : missingImageRetry ? queue.missingImageRetryPending() : queue.normalPending();
             int limit = single ? 1 : capacity.applyAsInt(ConcurrencyPolicy.validate(settings.getInt("concurrentWebViews", 1)));
-            QueueControl.effectiveViews = limit; QueueControl.peakViews = 0; QueueControl.memoryPressure = false;
+            QueueControl.effectiveViews = limit; QueueControl.peakViews = 0; QueueControl.memoryPressure = false; metricsStarted = true;
             log.log("POOL", "REQUESTED_LIMIT", settings.getInt("concurrentWebViews", 1)); log.log("POOL", "EFFECTIVE_LIMIT", limit);
             workers = Executors.newFixedThreadPool(limit);
             CompletionService<Result> completed = new ExecutorCompletionService<>(workers);
@@ -159,7 +159,7 @@ final class QueueEngine {
             ProfileProvider current = provider; if (current != null) current.cancel();
             if (workers != null) { workers.shutdownNow(); try { workers.awaitTermination(5, TimeUnit.SECONDS); } catch (InterruptedException error) { Thread.currentThread().interrupt(); } }
             if (current != null) current.close();
-            settings.edit().putInt("peakViewsLastRun",QueueControl.peakViews).putInt("effectiveViewsLastRun",QueueControl.effectiveViews).commit();
+            if(metricsStarted)settings.edit().putInt("peakViewsLastRun",QueueControl.peakViews).putInt("effectiveViewsLastRun",QueueControl.effectiveViews).commit();
             QueueControl.activeViews = 0; QueueControl.activeAccounts=0; QueueControl.current = ""; QueueControl.etaSeconds = -1;
             if (QueueControl.requested) state(QueueControl.requestedState);
         }
