@@ -21,6 +21,7 @@ public class QueueTest {
     }
     @Test public void retryFailedSelectsOnlyFailed() {
         store.mark("example", "FAILED", "NETWORK_ERROR"); store.reset(store.users(true)); assertEquals(Collections.singletonList("example"), store.pending());
+        assertEquals("An explicit Retry Failed action remains eligible",Collections.singletonList("example"),store.normalPending());
     }
     @Test public void retryTimeoutsSelectsOnlyCompletedTimeoutFailuresAndOnlyOnce() {
         store.mark("example","SKIPPED","WEBVIEW_TIMEOUT");
@@ -72,6 +73,14 @@ public class QueueTest {
         store.image(new QueueStore.Image("example","content://selected/thumbs","example.webp",100,256,256,1,true));
         assertEquals(0,store.prepareMissingImageRetries("missing-run"));
         assertTrue(store.missingImageRetryPending().isEmpty());
+    }
+    @Test public void completedSpecialRetryNeverFallsBackIntoResumeButExplicitRetryFailedStillCan() {
+        store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
+        assertEquals(1,store.prepareMissingImageRetries("missing-run"));
+        store.finishMissingImageRetry("example","RETRY_LATER","RATE_LIMITED");
+        assertTrue("A completed one-time retry must not be repeated by Resume",store.normalPending().isEmpty());
+        store.reset(store.retryable());
+        assertEquals("The separate explicit Retry Failed command remains available",Collections.singletonList("example"),store.normalPending());
     }
     @Test public void invalidImportPreservesOldQueue() {
         try { store.replace(ImportTest.parse("broken")); fail(); } catch (Exception expected) { }
