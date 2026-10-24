@@ -132,7 +132,7 @@ final class QueueEngine {
                     if(error.code.equals("OUTSIDE_WORKING_HOURS")){hoursEnded=true;continue;}
                     if (error.code.equals("REQUEST_CANCELLED")) continue; // Leave pending for a manual resume.
                     queue.attempted(result.user);
-                    String resultStatus=(timeoutRetry&&error.code.equals("WEBVIEW_TIMEOUT"))||(missingImageRetry&&error.retryAt>0)?"FAILED":FailurePolicy.skip(error) ? (FailurePolicy.confirmedUnavailable(error) ? "SKIPPED_UNAVAILABLE" : "SKIPPED") : error.retryAt>0?"RETRY_LATER":"FAILED";
+                    String resultStatus=(timeoutRetry&&(error.code.equals("WEBVIEW_TIMEOUT")||error.retryAt>0))||(missingImageRetry&&error.retryAt>0)?"FAILED":FailurePolicy.skip(error) ? (FailurePolicy.confirmedUnavailable(error) ? "SKIPPED_UNAVAILABLE" : "SKIPPED") : error.retryAt>0?"RETRY_LATER":"FAILED";
                     if(timeoutRetry)queue.finishTimeoutRetry(result.user,resultStatus,error.code);else if(missingImageRetry)queue.finishMissingImageRetry(result.user,resultStatus,error.code);else queue.mark(result.user,resultStatus,error.code);
                     log.log("PROFILE", error.code, error.http);
                     if (error.retryAt > 0) settings.edit().putLong("retryAt", error.retryAt).putInt("blockedHttp",error.http).commit();
