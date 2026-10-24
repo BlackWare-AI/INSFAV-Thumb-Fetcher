@@ -1,8 +1,10 @@
-**JSON backup compatibility: This app reads `.json` backup files from SamMods InstaPro version 15.30 and earlier.**
-
 # INSFAV Thumb Fetcher
 
-Standalone native Android helper, version **0.5.0** (version code 10). Java, Android 8.0/API 26+, English UI, AMOLED black. No analytics or account registration.
+**Standalone Android companion for building local profile-thumbnail sets from compatible INSFAV backups.**
+
+Version **0.5.0** (version code 10) · Java · Android 8.0/API 26+ · English · AMOLED black · No analytics or account registration.
+
+**Backup compatibility:** Reads `.json` backup files from SamMods InstaPro version 15.30 and earlier.
 
 ## Preserved reference
 
@@ -50,6 +52,14 @@ Android Studio / JDK 17 / Gradle Wrapper 8.13; compile SDK 35, target SDK 37. `.
 The build 10 GitHub release is a signed debug APK. GitHub Actions' debug signing key is not persistent, so Android may reject it as an in-place update over a previous installation. If so, uninstall the old helper before installing build 10; app-private cookies, queue and settings will be removed, while the JSON backup and thumbnails in the selected external folder remain. Future in-place updates require a persistent signing key. CI also launches the debug APK and tests real Chromium pool reuse on anonymous **offline fixtures**, for requested sizes 1, 2, 5, 10 and 30 under the emulator's effective RAM cap. These checks do not establish live Instagram or physical-device stability. Default concurrency stays 1. See [TESTING.md](TESTING.md).
 
 Direct runtime dependency: AndroidX WorkManager 2.10.1 and its transitive AndroidX dependencies. Platform WebView/graphics/network APIs handle the rest. No additional runtime libraries were added for 0.5.0.
+
+## Open source and development
+
+This public repository is available to fork, study, modify and extend. Third-party contributions are welcome through pull requests; read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes.
+
+INSFAV Thumb Fetcher is a separate helper app. It does not change INSFAV or INSFAV Plus. The current source is preserved on the `preservation/current-main-2026-10-24` branch. The published 0.5.0 release history and the earlier `v0.2.2-working` reference remain available.
+
+Build and verification instructions are above and in [TESTING.md](TESTING.md). The existing 0.5.0 release is a signed debug APK; its CI signing key is not persistent, so it may not install as an update over another build. Official update-compatible releases require a persistent private signing key. Never publish signing keys, cookies or personal backup data.
 
 ## Main INSFAV integration map
 
