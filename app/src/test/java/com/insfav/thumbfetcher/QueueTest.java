@@ -21,6 +21,7 @@ public class QueueTest {
     }
     @Test public void retryFailedSelectsOnlyFailed() {
         store.mark("example", "FAILED", "NETWORK_ERROR"); store.reset(store.users(true)); assertEquals(Collections.singletonList("example"), store.pending());
+        assertEquals("An explicit Retry Failed action remains eligible",Collections.singletonList("example"),store.normalPending());
     }
     @Test public void retryTimeoutsSelectsOnlyCompletedTimeoutFailuresAndOnlyOnce() {
         store.mark("example","SKIPPED","WEBVIEW_TIMEOUT");
@@ -41,10 +42,11 @@ public class QueueTest {
         assertEquals(2,store.prepareTimeoutRetries("run"));
         store.finishTimeoutRetry("example","SUCCESS","VALID_WEBP");
         store.finishTimeoutRetry("valid_2","FAILED","PROFILE_IMAGE_URL_MISSING");
+        assertEquals(0,store.prepareTimeoutRetries("run-again"));
+        store.mark("valid_2","FAILED","LATER_MANUAL_ERROR");
         QueueStore.RetryReport report=store.timeoutRetryReport("run");
         assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
         assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_IMAGE_URL_MISSING",report.failed.get(0)[1]);
-        assertEquals(0,store.prepareTimeoutRetries("run-again"));
     }
     @Test public void retryMissingImagesSelectsOnlyEligibleErrorsAndSurvivesRestartOnce() {
         store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
@@ -60,6 +62,8 @@ public class QueueTest {
         store.finishMissingImageRetry("example","SUCCESS","VALID_WEBP");
         store.finishMissingImageRetry("valid_2","FAILED","PROFILE_PAGE_UNAVAILABLE");
         assertEquals(0,store.prepareMissingImageRetries("missing-run-2"));
+        store.mark("valid_2","FAILED","LATER_MANUAL_ERROR");
+        store.close();store=new QueueStore(context);
         QueueStore.RetryReport report=store.missingImageRetryReport("missing-run-1");
         assertEquals(2,report.retried);assertEquals(1,report.recovered);assertEquals(1,report.failed.size());
         assertEquals("valid_2",report.failed.get(0)[0]);assertEquals("PROFILE_PAGE_UNAVAILABLE",report.failed.get(0)[1]);
@@ -72,6 +76,14 @@ public class QueueTest {
         store.image(new QueueStore.Image("example","content://selected/thumbs","example.webp",100,256,256,1,true));
         assertEquals(0,store.prepareMissingImageRetries("missing-run"));
         assertTrue(store.missingImageRetryPending().isEmpty());
+    }
+    @Test public void completedSpecialRetryNeverFallsBackIntoResumeButExplicitRetryFailedStillCan() {
+        store.mark("example","FAILED","PROFILE_IMAGE_URL_MISSING");
+        assertEquals(1,store.prepareMissingImageRetries("missing-run"));
+        store.finishMissingImageRetry("example","RETRY_LATER","RATE_LIMITED");
+        assertEquals("A completed one-time retry must not be repeated by Resume",Collections.singletonList("valid_2"),store.normalPending());
+        store.reset(store.retryable());
+        assertEquals("The separate explicit Retry Failed command remains available",Collections.singletonList("example"),store.normalPending());
     }
     @Test public void invalidImportPreservesOldQueue() {
         try { store.replace(ImportTest.parse("broken")); fail(); } catch (Exception expected) { }

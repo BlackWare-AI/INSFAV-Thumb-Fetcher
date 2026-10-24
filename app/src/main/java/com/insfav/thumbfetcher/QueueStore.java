@@ -7,10 +7,10 @@ import java.util.*;
 
 /** Durable account queue and output-image index. Queue metadata stays in private app storage. */
 final class QueueStore extends SQLiteOpenHelper {
-    QueueStore(Context context) { super(context, "queue.db", null, 5); setWriteAheadLoggingEnabled(true); }
+    QueueStore(Context context) { super(context, "queue.db", null, 7); setWriteAheadLoggingEnabled(true); }
 
     @Override public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE accounts (username TEXT PRIMARY KEY, position INTEGER NOT NULL, status TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', eligible INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'PENDING', timeout_retry_state TEXT NOT NULL DEFAULT 'NONE', timeout_retry_run TEXT NOT NULL DEFAULT '', missing_retry_state TEXT NOT NULL DEFAULT 'NONE', missing_retry_run TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE accounts (username TEXT PRIMARY KEY, position INTEGER NOT NULL, status TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', eligible INTEGER NOT NULL DEFAULT 1, attempts INTEGER NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'PENDING', timeout_retry_state TEXT NOT NULL DEFAULT 'NONE', timeout_retry_run TEXT NOT NULL DEFAULT '', timeout_retry_result_code TEXT NOT NULL DEFAULT '', missing_retry_state TEXT NOT NULL DEFAULT 'NONE', missing_retry_run TEXT NOT NULL DEFAULT '', missing_retry_result_code TEXT NOT NULL DEFAULT '', manual_retry INTEGER NOT NULL DEFAULT 0)");
         db.execSQL("CREATE INDEX account_work_order ON accounts(status,position)");
         createCatalog(db);
     }
@@ -28,6 +28,11 @@ final class QueueStore extends SQLiteOpenHelper {
         if (oldVersion < 5) {
             db.execSQL("ALTER TABLE accounts ADD COLUMN missing_retry_state TEXT NOT NULL DEFAULT 'NONE'");
             db.execSQL("ALTER TABLE accounts ADD COLUMN missing_retry_run TEXT NOT NULL DEFAULT ''");
+        }
+        if (oldVersion < 6) db.execSQL("ALTER TABLE accounts ADD COLUMN manual_retry INTEGER NOT NULL DEFAULT 0");
+        if (oldVersion < 7) {
+            db.execSQL("ALTER TABLE accounts ADD COLUMN timeout_retry_result_code TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE accounts ADD COLUMN missing_retry_result_code TEXT NOT NULL DEFAULT ''");
         }
         db.execSQL("CREATE INDEX IF NOT EXISTS account_work_order ON accounts(status,position)");
         createCatalog(db);
@@ -109,7 +114,7 @@ final class QueueStore extends SQLiteOpenHelper {
         return users;
     }
     void mark(String user,String status,String code) {
-        ContentValues v=new ContentValues();v.put("status",status);v.put("code",code);
+        ContentValues v=new ContentValues();v.put("status",status);v.put("code",code);v.put("manual_retry",0);
         v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":code.equals("RATE_LIMITED")?"RATE_LIMITED":status.equals("RETRY_LATER")?"PENDING":status);
         getWritableDatabase().update("accounts",v,"username=?",new String[]{user});
     }
@@ -129,6 +134,7 @@ final class QueueStore extends SQLiteOpenHelper {
     void finishTimeoutRetry(String user,String status,String code) {
         String result=(status.equals("SUCCESS")||status.equals("EXISTING"))?"RECOVERED":"FAILED";
         ContentValues v=new ContentValues(); v.put("timeout_retry_state",result); v.put("status",status); v.put("code",code);
+        v.put("timeout_retry_result_code",code);v.put("manual_retry",0);
         v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":status.equals("RETRY_LATER")?"PENDING":status);
         getWritableDatabase().update("accounts",v,"username=? AND timeout_retry_state='PENDING'",new String[]{user});
     }
@@ -138,7 +144,7 @@ final class QueueStore extends SQLiteOpenHelper {
     }
     RetryReport timeoutRetryReport(String runId) {
         int retried=0,recovered=0; ArrayList<String[]> failed=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT username,timeout_retry_state,code FROM accounts WHERE timeout_retry_run=? AND timeout_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT username,timeout_retry_state,timeout_retry_result_code FROM accounts WHERE timeout_retry_run=? AND timeout_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
             while(c.moveToNext()) { retried++; String user=c.getString(0),state=c.getString(1),code=c.getString(2);
                 if("RECOVERED".equals(state)) recovered++;
                 else if("FAILED".equals(state)) failed.add(new String[]{user,code});
@@ -159,19 +165,20 @@ final class QueueStore extends SQLiteOpenHelper {
     void finishMissingImageRetry(String user,String status,String code) {
         String retry=(status.equals("SUCCESS")||status.equals("EXISTING"))?"RECOVERED":"FAILED";
         ContentValues v=new ContentValues();v.put("missing_retry_state",retry);v.put("status",status);v.put("code",code);
+        v.put("missing_retry_result_code",code);v.put("manual_retry",0);
         v.put("phase",status.equals("SUCCESS")||status.equals("EXISTING")?"COMPLETED":status.startsWith("SKIPPED")?"SKIPPED":status.equals("RETRY_LATER")?"PENDING":status);
         getWritableDatabase().update("accounts",v,"username=? AND missing_retry_state='PENDING'",new String[]{user});
     }
     RetryReport missingImageRetryReport(String runId) {
         int retried=0,recovered=0;ArrayList<String[]> failed=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT username,missing_retry_state,code FROM accounts WHERE missing_retry_run=? AND missing_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT username,missing_retry_state,missing_retry_result_code FROM accounts WHERE missing_retry_run=? AND missing_retry_state IN ('PENDING','RECOVERED','FAILED') ORDER BY position",new String[]{runId})){
             while(c.moveToNext()){retried++;String user=c.getString(0),state=c.getString(1),code=c.getString(2);if("RECOVERED".equals(state))recovered++;else if("FAILED".equals(state))failed.add(new String[]{user,code});}
         }
         return new RetryReport(retried,recovered,failed);
     }
     List<String> pending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1"); }
     /** Normal runs must not consume accounts reserved for an interrupted one-off retry. */
-    List<String> normalPending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1 AND timeout_retry_state!='PENDING' AND missing_retry_state!='PENDING'"); }
+    List<String> normalPending() { return select("status IN ('PENDING','RETRY_LATER') AND eligible=1 AND (manual_retry=1 OR (timeout_retry_state='NONE' AND missing_retry_state='NONE'))"); }
     List<String> retryable() { return select("status IN ('FAILED','SKIPPED','SKIPPED_UNAVAILABLE','RETRY_LATER')"); }
     private List<String> select(String where) {
         ArrayList<String> users=new ArrayList<>();
@@ -180,7 +187,7 @@ final class QueueStore extends SQLiteOpenHelper {
     }
     void reset(List<String> users) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
-        try { db.execSQL("UPDATE accounts SET eligible=0");for(String user:users){ContentValues v=new ContentValues();v.put("status","PENDING");v.put("code","");v.put("phase","PENDING");v.put("attempts",0);v.put("eligible",1);db.update("accounts",v,"username=?",new String[]{user});}db.setTransactionSuccessful(); }
+        try { db.execSQL("UPDATE accounts SET eligible=0,manual_retry=0");for(String user:users){ContentValues v=new ContentValues();v.put("status","PENDING");v.put("code","");v.put("phase","PENDING");v.put("attempts",0);v.put("eligible",1);v.put("manual_retry",1);db.update("accounts",v,"username=?",new String[]{user});}db.setTransactionSuccessful(); }
         finally { db.endTransaction(); }
     }
     void recoverInterrupted(){getWritableDatabase().execSQL("UPDATE accounts SET status='PENDING',phase='PENDING',eligible=1 WHERE phase='DOWNLOADING'");}
