@@ -106,7 +106,8 @@ public final class MainActivity extends Activity {
     private void picker(Intent intent, int code) { try { startActivityForResult(intent, code); } catch (ActivityNotFoundException error) { message("No document picker is available"); } }
     private void begin(String action) {
         if (busy || QueueControl.lock.get() || launchPending) return;
-        if (!"verify_index".equals(action) && !new CookieVault(this).configured()) { message("Paste and save Instagram cookies first"); return; }
+        if (!"verify_index".equals(action)) try { InstagramSession.requireReady(this); } catch (ProfileProvider.Failure e) { message("Verify the Instagram session first"); return; }
+        if (!"verify_index".equals(action) && !InstagramSession.configured(this)) { message("Sign in through Instagram Login or select Manual Cookies first"); return; }
         if (!saveSchedule()) return;
         if ((settings.getString("tree", "").isEmpty() || queue.users(false).isEmpty())) { message("Select a valid JSON backup and output folder first"); return; }
         if (!"verify_index".equals(action) && System.currentTimeMillis() < settings.getLong("retryAt",0)) { message("Instagram cooldown is active until Retry-After expires"); return; }
@@ -124,11 +125,17 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(48), 1); params.topMargin = dp(8); params.setMargins(dp(2), dp(8), dp(2), 0); row.addView(b, params); b.setOnClickListener(click); configurationViews.add(b); return b;
     }
     private void addCookieControls(LinearLayout layout) {
+        LinearLayout methods = row(layout);
+        smallButton(methods, "WebView Session", v -> { InstagramSession.select(this, false); update(); });
+        smallButton(methods, "Manual Cookies", v -> { InstagramSession.select(this, true); update(); });
+        LinearLayout sessionActions = row(layout);
+        smallButton(sessionActions, "Instagram Login / Status", v -> InstagramSession.show(this));
+        smallButton(sessionActions, "Test Session", v -> InstagramSession.test(this));
         cookieStatus = text("Cookies Not Configured", 13, 0xffaaaaaa); cookieStatus.setPadding(0, dp(14), 0, 0); layout.addView(cookieStatus);
         LinearLayout controls = row(layout);
         smallButton(controls, "Select Cookies", v -> { cookieInput.setText(""); cookieEditor.setVisibility(cookieEditor.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); if (cookieEditor.getVisibility() == View.VISIBLE) getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); });
         smallButton(controls, "Remove Cookies", v -> {
-            new CookieVault(this).remove(); ThumbApplication.clearBrowserSession(); SessionState.changed(this); cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); settings.edit().putString("state", "Cookies removed").apply(); log.log("COOKIE", "REMOVED", 0); update();
+            new CookieVault(this).remove(); InstagramSession.removeManual(); SessionState.changed(this); cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); settings.edit().putString("state", "Cookies removed").apply(); log.log("COOKIE", "REMOVED", 0); update();
         });
         cookieEditor = new LinearLayout(this); cookieEditor.setOrientation(LinearLayout.VERTICAL); cookieEditor.setVisibility(View.GONE); layout.addView(cookieEditor);
         cookieInput = new EditText(this); cookieInput.setHint("Paste Netscape cookies or an HTTP Cookie header"); cookieInput.setHintTextColor(0xff777777); cookieInput.setTextColor(Color.WHITE); cookieInput.setMinLines(3); cookieInput.setMaxLines(6); cookieInput.setTextSize(13);
@@ -285,7 +292,7 @@ public final class MainActivity extends Activity {
         if(completedState.equals("Retry Missing Images — Completed")&&!missingRun.isEmpty()&&!missingRun.equals(settings.getString("missingImageRetryShownRun",""))){
             settings.edit().putString("missingImageRetryShownRun",missingRun).commit();handler.post(()->{if(!isFinishing()&&!isDestroyed())showMissingImageRetryResults();});
         }
-        cookieStatus.setText(new CookieVault(this).configured() ? "Cookies Configured" : "Cookies Not Configured"); jsonLabel.setText(settings.getString("json", "No JSON selected"));
+        cookieStatus.setText(InstagramSession.status(this) + " · Manual cookies " + (new CookieVault(this).configured() ? "saved" : "not saved")); jsonLabel.setText(settings.getString("json", "No JSON selected"));
         folderLabel.setText(settings.getString("tree", "").isEmpty() ? "No output folder selected" : "Selected folder → .thumbnails / username.webp");
         boolean active = busy || QueueControl.lock.get() || launchPending;
         selectJson.setEnabled(!active); selectFolder.setEnabled(!active); start.setEnabled(!active && total > 0); pause.setEnabled(!busy && !launchPending && total > 0); stop.setEnabled(QueueControl.lock.get() || settings.getBoolean("armed", false));
@@ -294,8 +301,8 @@ public final class MainActivity extends Activity {
         cookieInput.setEnabled(!active);
     }
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }
-    @Override protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
-    @Override protected void onStop() {
+    @Override protected void onPause() { InstagramSession.flush(); handler.removeCallbacks(refresh); super.onPause(); }
+    @Override protected void onStop() { InstagramSession.flush();
         if (cookieInput != null) { cookieInput.setText(""); cookieEditor.setVisibility(View.GONE); getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE); }
         if (!settings.getBoolean("background", false) && QueueControl.lock.get()) QueueControl.pause(this, false);
         super.onStop();

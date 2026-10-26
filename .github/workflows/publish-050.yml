@@ -1,26 +1,18 @@
-name: Publish INSFAV Thumb Fetcher 0.5.0 build 11
-
+name: Publish Instagram session update
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/publish-050.yml'
-      - 'app/build.gradle'
-      - 'app/src/main/java/com/insfav/thumbfetcher/**'
-      - 'app/src/test/java/com/insfav/thumbfetcher/**'
-      - 'README.md'
-      - 'TESTING.md'
-  pull_request:
-    branches: [main]
-
+  workflow_dispatch:
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  verify-and-publish:
-    if: github.repository == 'BlackWare-AI/INSFAV-Thumb-Fetcher'
+  checks:
+    uses: ./.github/workflows/instagram-session.yml
+  publish:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
+    permissions:
+      contents: write
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -30,75 +22,58 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Verify app version
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          build = Path('app/build.gradle').read_text()
-          assert re.search(r"versionCode\s+11\b", build)
-          assert re.search(r"versionName\s+'0\.5\.0'", build)
-          PY
-      - name: Run tests and lint
-        run: |
-          node --test tools/profile-probe.test.cjs tests/probe-classification.cjs
-          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug --no-daemon --console=plain
-      - name: Require persistent release signing key
-        if: github.event_name == 'push'
+      - name: Require the existing signing key
         shell: bash
         run: |
           set -euo pipefail
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then echo "Missing required GitHub Actions secret: $name" >&2; exit 1; fi
+            if [[ -z "${!name}" ]]; then echo "Missing required existing signing secret: $name" >&2; exit 1; fi
           done
-          key="$RUNNER_TEMP/insfav-release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key"
-          test -s "$key"
-          echo "ANDROID_KEYSTORE_PATH=$key" >> "$GITHUB_ENV"
-      - name: Build and verify update-installable release APK
-        if: github.event_name == 'push'
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/session-release.jks"
+          test -s "$RUNNER_TEMP/session-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/session-release.jks" >> "$GITHUB_ENV"
+      - name: Build signed release
+        shell: bash
         run: |
-          ./gradlew :app:assembleRelease --no-daemon --console=plain
+          if ! ./gradlew :app:lintRelease :app:assembleRelease --no-daemon --console=plain > "$RUNNER_TEMP/signing-build.log" 2>&1; then
+            echo 'Release build or lint failed; signing output withheld to protect existing key material.' >&2
+            exit 1
+          fi
+      - name: Verify package, version and signing certificate continuity
+        shell: bash
+        run: |
+          set -euo pipefail
           apk=app/build/outputs/apk/release/app-release.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.insfav.thumbfetcher' versionCode='11' versionName='0.5.0'"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
-          size=$(stat -c%s "$apk")
-          sha=$(sha256sum "$apk" | cut -d ' ' -f 1)
-          cp "$apk" INSFAV-Thumb-Fetcher-0.5.0-build11.apk
-          echo "$sha  INSFAV-Thumb-Fetcher-0.5.0-build11.apk" > SHA256SUMS
-          cat > RELEASE-NOTES.md <<EOF
-          # INSFAV Thumb Fetcher 0.5.0 (build 11)
-
-          The application version remains 0.5.0; Android versionCode is 11. The release APK is signed using the persistent repository release key so it can update an installation signed with that same key.
-
-          - Adds a persistent, one-time Retry Timeouts action restricted to accounts whose last eligible result was WEBVIEW_TIMEOUT.
-          - Never selects successful, pending, or PROFILE_PAGE_UNAVAILABLE accounts for this action.
-          - Preserves the real second-attempt error code, writes successful WebP files through the existing output path, and supports pause/resume after process interruption.
-          - Shows recovered/failed totals and Instagram profile links; exports remaining failures as Timeout-Failed.txt.
-          - Adds Retry Missing Images for PROFILE_IMAGE_URL_MISSING and PROFILE_DATA_AMBIGUOUS, with one persisted extra attempt per account and preserved final error codes.
-          - Keeps PROFILE_PAGE_UNAVAILABLE and SKIPPED_UNAVAILABLE out of normal and retry queues.
-          - Shows retry results with tappable Instagram links and exports Missing-Images-Failed.txt through Android SAF.
-          - Keeps Retry Timeouts, Start Missing, Retry Failed, WebView pool and thumbnail indexing paths separate.
-          - Reports configured, current and peak active WebView counts separately.
-
-          APK size: ${size} bytes. SHA-256: ${sha}.
-
-          Automated tests use offline fixtures. No live Instagram session or physical-device test is represented by this release.
-          EOF
-          tag=v0.5.0-build11
-          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists; refusing to overwrite it."; exit 1; fi
-          gh release create "$tag" INSFAV-Thumb-Fetcher-0.5.0-build11.apk SHA256SUMS --title "INSFAV Thumb Fetcher 0.5.0 (build 11)" --notes-file RELEASE-NOTES.md --target "$GITHUB_SHA"
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/badging.txt"
+          grep -F "package: name='com.insfav.thumbfetcher' versionCode='12' versionName='0.5.0'" "$RUNNER_TEMP/badging.txt"
+          if grep -q application-debuggable "$RUNNER_TEMP/badging.txt"; then exit 1; fi
+          "$tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/current-cert.txt"
+          mkdir previous
+          gh release download v0.5.0-build11 --pattern '*.apk' --dir previous
+          prior=$(find previous -name '*.apk' -print -quit)
+          "$tools/apksigner" verify --verbose --print-certs "$prior" > "$RUNNER_TEMP/previous-cert.txt"
+          grep 'certificate SHA-256 digest:' "$RUNNER_TEMP/current-cert.txt" > current-cert.txt
+          grep 'certificate SHA-256 digest:' "$RUNNER_TEMP/previous-cert.txt" > previous-cert.txt
+          diff -u previous-cert.txt current-cert.txt
+          cp "$apk" INSFAV-Thumb-Fetcher-0.5.0-build12.apk
+          sha256sum INSFAV-Thumb-Fetcher-0.5.0-build12.apk > SHA256SUMS
+      - name: Publish only the verified session update
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          if gh release view v0.5.0-build12 >/dev/null 2>&1; then echo 'Release already exists; refusing to overwrite.'; exit 1; fi
+          gh release create v0.5.0-build12 INSFAV-Thumb-Fetcher-0.5.0-build12.apk SHA256SUMS --target "$GITHUB_SHA" --title 'INSFAV-Thumb-Fetcher 0.5.0 (build 12)' --notes-file INSTAGRAM-SESSION-RELEASE.md
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/session-release.jks"

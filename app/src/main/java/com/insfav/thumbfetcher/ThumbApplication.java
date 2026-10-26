@@ -3,7 +3,7 @@ package com.insfav.thumbfetcher;
 import android.app.Application;
 import android.webkit.*;
 
-/** Invalidate old HTTP-provider proof and purge browser state left by an interrupted process. */
+/** Initialize queue metadata without clearing persistent browser state. */
 public final class ThumbApplication extends Application {
     @Override public void onCreate() {
         super.onCreate();
@@ -15,15 +15,11 @@ public final class ThumbApplication extends Application {
             WorkScheduler.cancel(this);
         }
         OutputIndexObserver.attach(this, settings.getString("tree", ""));
-        clearBrowserSession();
+        CookieManager.getInstance().setAcceptCookie(true);
     }
     @Override public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         if (level == TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_RUNNING_CRITICAL || level == TRIM_MEMORY_COMPLETE) QueueControl.memoryPressure = true;
     }
     @Override public void onLowMemory() { super.onLowMemory(); QueueControl.memoryPressure = true; }
-    static void clearBrowserSession() {
-        try { CookieManager.getInstance().removeAllCookies(null); WebStorage.getInstance().deleteAllData(); }
-        catch (RuntimeException | LinkageError ignored) { /* Provider initialization reports a fixed error when a test starts. */ }
-    }
 }

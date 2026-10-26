@@ -44,7 +44,7 @@ final class PhotoViewer {
             if (!ownsQueueLock) { main.post(() -> { if (!closed) label.append(" · Pause downloads and reopen for full resolution"); }); return; }
             try {
                 if (System.currentTimeMillis() < SessionState.prefs(activity).getLong("retryAt", 0)) throw new ProfileProvider.Failure("RATE_LIMITED");
-                provider = new WebViewProfileProvider(activity, new CookieVault(activity).load());
+                provider = InstagramSession.open(activity);
                 if (closed) return;
                 byte[] bytes = provider.fetch(user, true);
                 if (!ThumbnailCodec.completeContainer(bytes)) throw new IOException("IMAGE_CONTAINER_INVALID");
