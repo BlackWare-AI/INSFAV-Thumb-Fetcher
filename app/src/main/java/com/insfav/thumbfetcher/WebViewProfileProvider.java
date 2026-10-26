@@ -26,6 +26,7 @@ final class WebViewProfileProvider implements ProfileProvider {
     private boolean isolatedManual;
     private volatile CookieManager sessionManager;
     private volatile String sessionAccount = "";
+    private volatile String browserAgent = "";
     private final Object authenticationLock = new Object();
     private volatile boolean persistentAuthenticated;
 
@@ -70,7 +71,9 @@ final class WebViewProfileProvider implements ProfileProvider {
             imageTransfers.acquire();
             try {
                 if (cancelled || barrier != null) throw new Failure("REQUEST_CANCELLED");
-                transfers.add(transfer); return transfer.download(image);
+                transfers.add(transfer);
+                if (cancelled || barrier != null) { transfer.cancel(); throw new Failure("REQUEST_CANCELLED"); }
+                transfer.userAgent = browserAgent; return transfer.download(image);
             } finally { transfers.remove(transfer); imageTransfers.release(); }
         } catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new Failure("REQUEST_CANCELLED"); }
         catch (Failure error) { if (FailurePolicy.pause(error)) trip(error); throw error; }
@@ -122,7 +125,7 @@ final class WebViewProfileProvider implements ProfileProvider {
                     try {
                         if (isolatedManual && !InstagramSession.profiles()) throw new Failure("COOKIE_WEBVIEW_UPDATE_REQUIRED", 0, 0, true);
                 CookieManager m = isolatedManual ? InstagramSession.manager(true) : CookieManager.getInstance();
-                        sessionManager = m; m.setAcceptCookie(true);
+                        sessionManager = m; browserAgent = WebSettings.getDefaultUserAgent(context); m.setAcceptCookie(true);
                         if (cookies == null) { sessionAccount = InstagramSession.account(m); sessionReady.countDown(); }
                         else { sessionAccount = cookies.value("ds_user_id", System.currentTimeMillis()); m.removeAllCookies(ignored -> applySessionCookies(m, 0)); }
                     } catch (Failure error) { sessionFailure = error; sessionReady.countDown(); }
