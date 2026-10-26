@@ -2,7 +2,7 @@
 set -euo pipefail
 mkdir -p session-evidence
 package=com.insfav.thumbfetcher
-runner=com.insfav.thumbfetcher.test/com.insfav.thumbfetcher.SessionInstrumentation
+runner=com.insfav.thumbfetcher.test/com.insfav.thumbfetcher.PoolInstrumentation
 apk=$(find app/build builds -name app-debug.apk -print -quit 2>/dev/null || true)
 test_apk=$(find app/build builds -name '*debug-androidTest.apk' -print -quit 2>/dev/null || true)
 adb install -r "$apk"

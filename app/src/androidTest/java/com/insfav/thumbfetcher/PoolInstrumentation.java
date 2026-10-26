@@ -12,8 +12,10 @@ import java.util.concurrent.*;
 
 /** Real Chromium, anonymous offline pages and decoded PNGs; never contacts Instagram. */
 public final class PoolInstrumentation extends Instrumentation {
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    private Bundle sessionArguments;
+    @Override public void onCreate(Bundle args) { sessionArguments = args; super.onCreate(args); start(); }
     @Override public void onStart() {
+        if (sessionArguments != null && sessionArguments.containsKey("scenario")) { SessionInstrumentation.run(this, sessionArguments); return; }
         Bundle result = new Bundle();
         try {
             Context c = getTargetContext();
