@@ -20,7 +20,7 @@ final class QueueEngine {
     private volatile ProfileProvider provider;
     private volatile boolean cancelled;
     private volatile String cancelledState = "Interrupted; unfinished work preserved";
-    QueueEngine(Context c, Reporter r, BooleanSupplier stopped) { this(c, r, stopped, () -> new WebViewProfileProvider(c, new CookieVault(c).load())); }
+    QueueEngine(Context c, Reporter r, BooleanSupplier stopped) { this(c, r, stopped, () -> InstagramSession.open(c)); }
     QueueEngine(Context c, Reporter r, BooleanSupplier stopped, Sessions sessions) { this(c, r, stopped, sessions, requested -> ConcurrencyPolicy.initial(c, requested)); }
     QueueEngine(Context c, Reporter r, BooleanSupplier stopped, Sessions sessions, java.util.function.IntUnaryOperator capacity) { context = c; settings = SessionState.prefs(c); reporter = r; this.stopped = stopped; this.sessions = sessions; this.capacity = capacity; }
     void cancel(String state) { cancelledState = state; cancel(); }
