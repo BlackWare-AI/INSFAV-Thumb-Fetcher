@@ -34,13 +34,17 @@ public class BrowserSessionUiTest {
                 int reloads=Shadows.shadowOf(browser).getReloadInvocations();
                 ReflectionHelpers.callInstanceMethod(activity,"refreshPage");
                 assertEquals(reloads+1,Shadows.shadowOf(browser).getReloadInvocations());
+                QueueControl.lock.set(true);
+                ReflectionHelpers.callInstanceMethod(activity,"switchEngine",ReflectionHelpers.ClassParameter.from(String.class,engine.equals("legacy")?"netscape":"legacy"));
+                assertEquals(engine,InstagramSession.engine(c));
+                QueueControl.lock.set(false);
                 assertTrue((activity.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
                 activity.onBackPressed();
                 assertFalse(((android.app.Dialog)ReflectionHelpers.getField(activity,"details")).isShowing());
                 ReflectionHelpers.callInstanceMethod(activity,"showCookies");
                 controller.pause();
                 TextView paused=ReflectionHelpers.getField(activity,"cookies");assertEquals("",paused.getText().toString());
-            } finally {controller.stop().destroy();}
+            } finally {QueueControl.lock.set(false);controller.stop().destroy();}
         }
     }
 }

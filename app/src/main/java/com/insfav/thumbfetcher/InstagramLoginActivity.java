@@ -96,8 +96,12 @@ public final class InstagramLoginActivity extends Activity {
     }
     private void switchEngine(String selected) {
         if (selected.equals(engine) || !lease) return;
-        InstagramSession.flush(); InstagramSession.selectEngine(this,selected);
-        recreate();
+        try {
+            InstagramSession.flush(); InstagramSession.selectEngine(this,selected);
+            recreate();
+        } catch (IllegalStateException busy) {
+            status.setText(t("Pause retrieval before changing the session method.","Oturum yöntemini değiştirmeden önce indirmeyi duraklatın."));
+        }
     }
     private static boolean challenge(String path) {return path!=null&&(path.contains("challenge")||path.contains("checkpoint")||path.contains("two_factor"));}
     private boolean safePage() {return browser!=null&&browser.getUrl()!=null&&instagram(Uri.parse(browser.getUrl()))&&!challenge(Uri.parse(browser.getUrl()).getPath());}
