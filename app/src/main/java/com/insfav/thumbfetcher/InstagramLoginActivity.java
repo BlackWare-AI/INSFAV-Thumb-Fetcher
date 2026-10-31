@@ -64,7 +64,10 @@ public final class InstagramLoginActivity extends Activity {
             settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setGeolocationEnabled(false);
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             settings.setJavaScriptCanOpenWindowsAutomatically(false);settings.setSupportMultipleWindows(false);
-            ServiceWorkerController.getInstance().getServiceWorkerWebSettings().setBlockNetworkLoads(false);
+            // Service workers are optional on older/OEM providers and in offline test hosts.
+            // An unavailable controller must not prevent the first-party login page from loading.
+            try { ServiceWorkerController.getInstance().getServiceWorkerWebSettings().setBlockNetworkLoads(false); }
+            catch (RuntimeException | LinkageError ignored) { }
             CookieManager manager = CookieManager.getInstance(); manager.setAcceptCookie(true);manager.setAcceptThirdPartyCookies(browser,false);
             browser.setWebChromeClient(new WebChromeClient() {
                 @Override public boolean onConsoleMessage(ConsoleMessage message) { return true; }
