@@ -6,8 +6,10 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/instagram-session.yml
+  thumbnail-checks:
+    uses: ./.github/workflows/android.yml
   publish:
-    needs: checks
+    needs: [checks, thumbnail-checks]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
