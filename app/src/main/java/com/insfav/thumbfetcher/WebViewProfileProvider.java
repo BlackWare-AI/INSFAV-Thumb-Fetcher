@@ -340,6 +340,7 @@ final class WebViewProfileProvider implements ProfileProvider {
         void finish(JSONObject data, Failure error) {
             if (finishing) return;
             finishing = true; result = data; failure = error;
+            if (error == null && data != null && cookies == null) BrowserCookieStore.updated(context);
             if (error == null && user.isEmpty() && data != null && data.optBoolean("authenticated")) {
                 if (sessionManager != null) sessionManager.flush();
                 InstagramSession.recordVerified(context, cookies != null);
