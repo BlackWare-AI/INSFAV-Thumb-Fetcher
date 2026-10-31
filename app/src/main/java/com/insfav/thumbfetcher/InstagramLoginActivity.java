@@ -28,6 +28,8 @@ public final class InstagramLoginActivity extends Activity {
     @Override @SuppressLint("SetJavaScriptEnabled") public void onCreate(Bundle saved) {
         setTheme(android.R.style.Theme_Material_NoActionBar);
         super.onCreate(saved);
+        if (Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
         String language = SessionState.prefs(this).getString("language","system");
         turkish = language.equals("tr") || language.equals("system") && getResources().getConfiguration().getLocales().get(0).getLanguage().equals("tr");
         engine = InstagramSession.engine(this);
@@ -173,7 +175,8 @@ public final class InstagramLoginActivity extends Activity {
     private TextView text(String value,int size,int color){TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);return v;}
     private GradientDrawable background(int color,int radius){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(radius));g.setStroke(dp(1),0xff242424);return g;}
     private Button button(LinearLayout row,String label,Runnable action){Button b=new Button(this);b.setTextIsSelectable(false);b.setLongClickable(false);b.setText(label);b.setAllCaps(false);b.setTextSize(12);b.setTextColor(Color.WHITE);b.setMinHeight(dp(44));b.setMinimumHeight(dp(44));b.setPadding(dp(10),0,dp(10),0);b.setBackground(background(0xff101010,16));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(row.getOrientation()==LinearLayout.VERTICAL?-1:0,dp(44),row.getOrientation()==LinearLayout.VERTICAL?0:1);p.setMargins(dp(4),dp(4),dp(4),dp(4));row.addView(b,p);b.setOnClickListener(v->action.run());return b;}
-    @Override public void onBackPressed(){if(details!=null&&details.isShowing())details.dismiss();else if(browser!=null&&browser.canGoBack())browser.goBack();else super.onBackPressed();}
+    private void handleBack(){if(details!=null&&details.isShowing())details.dismiss();else if(browser!=null&&browser.canGoBack())browser.goBack();else finish();}
+    @Override public void onBackPressed(){handleBack();}
     @Override protected void onResume(){super.onResume();foreground=true;if(browser!=null)browser.onResume();refreshCookies();}
     @Override protected void onPause(){foreground=false;if(browser!=null)browser.onPause();detailGeneration++;if(cookies!=null)cookies.setText("");InstagramSession.flush();super.onPause();}
     @Override protected void onStop(){InstagramSession.flush();super.onStop();}
