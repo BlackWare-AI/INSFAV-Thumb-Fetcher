@@ -100,6 +100,19 @@ final class SessionInstrumentation {
                 }catch(Throwable error){failure.set(error);manualDone.countDown();}
             });
             if(!manualDone.await(20,TimeUnit.SECONDS)||failure.get()!=null)throw new AssertionError("Manual profile isolation failed");
+            // Exercise the actual Chromium CookieManager -> encrypted snapshot -> Netscape paths.
+            for (String engine : new String[]{"legacy","netscape"}) {
+                InstagramSession.selectEngine(c,engine);
+                CookieJar extracted=BrowserCookieStore.captureNow(c,engine);
+                String exported=NetscapeBrowserCookies.text(extracted);
+                CookieJar parsed=CookieJar.parse(exported,System.currentTimeMillis());
+                if(!value.equals(parsed.value("sessionid",System.currentTimeMillis())))throw new AssertionError("Extraction round trip failed");
+                if(!value.equals(BrowserCookieStore.vault(c,engine).load().value("sessionid",System.currentTimeMillis())))throw new AssertionError("Encrypted snapshot unavailable");
+                String snapshotName=engine.equals("netscape")?"instagram-netscape-cookies.enc":"instagram-webview-cookies.enc";
+                byte[] encrypted=Files.readAllBytes(new java.io.File(c.getFilesDir(),snapshotName).toPath());
+                if(new String(encrypted,StandardCharsets.ISO_8859_1).contains(value))throw new AssertionError("Plaintext browser snapshot");
+                if(!InstagramSession.configured(c))throw new AssertionError("Snapshot did not configure retrieval");
+            }
             java.io.File file=new java.io.File(c.getFilesDir(),"session-thumbnail-sentinel.webp");
             if(seed) {
                 Files.write(file.toPath(),"PRESERVED_THUMBNAIL".getBytes(StandardCharsets.UTF_8));

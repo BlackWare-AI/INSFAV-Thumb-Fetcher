@@ -128,6 +128,12 @@ public final class MainActivity extends Activity {
         LinearLayout methods = row(layout);
         smallButton(methods, "WebView Session", v -> { InstagramSession.select(this, false); update(); });
         smallButton(methods, "Manual Cookies", v -> { InstagramSession.select(this, true); update(); });
+        LinearLayout engines = row(layout);
+        smallButton(engines, "Legacy · WebView", v -> { InstagramSession.selectEngine(this, "legacy"); update(); });
+        smallButton(engines, "YTDLnis · Netscape", v -> { InstagramSession.selectEngine(this, "netscape"); update(); });
+        LinearLayout languages = row(layout);
+        smallButton(languages, "Session · English", v -> settings.edit().putString("language", "en").apply());
+        smallButton(languages, "Oturum · Türkçe", v -> settings.edit().putString("language", "tr").apply());
         LinearLayout sessionActions = row(layout);
         smallButton(sessionActions, "Instagram Login / Status", v -> InstagramSession.show(this));
         smallButton(sessionActions, "Test Session", v -> InstagramSession.test(this));

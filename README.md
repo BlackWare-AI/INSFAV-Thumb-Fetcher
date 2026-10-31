@@ -2,9 +2,11 @@
 
 # INSFAV Thumb Fetcher
 
-Standalone native Android helper, version **0.5.0** (version code 11). Java, Android 8.0/API 26+, English UI, AMOLED black. No analytics or account registration.
+Standalone native Android helper, version **6.0.0** (version code 13). Java, Android 8.0/API 26+, English UI with English/Turkish Instagram session controls, AMOLED black. No analytics or account registration.
 
 ## Preserved reference
+
+Version 6.0.0 ports the Plus Legacy/YTDLnis-style persistent Instagram browser, encrypted cookie snapshots and Netscape conversion. See [integration details](WEBVIEW-6.0.0.md) and [release notes](RELEASE-6.0.0.md).
 
 The 0.4.0 release and the earlier `v0.2.2-working` reference remain unchanged. Version 0.5.0 carries forward the integrated Fetcher's durable queue, output index, clearer notifications, cooldown scheduling, and resolution audit while retaining the standalone JSON import and WebView retrieval engine.
 

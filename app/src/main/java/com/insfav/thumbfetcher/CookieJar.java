@@ -9,10 +9,14 @@ final class CookieJar {
     static final int MAX_INPUT = 65536;
     static final class Entry {
         final String name, value, domain, path;
-        final boolean subdomains;
+        final boolean subdomains, secure, httpOnly;
         final long expires;
         Entry(String name, String value, String domain, String path, boolean subdomains, long expires) {
+            this(name, value, domain, path, subdomains, expires, true, false);
+        }
+        Entry(String name, String value, String domain, String path, boolean subdomains, long expires, boolean secure, boolean httpOnly) {
             this.name = name; this.value = value; this.domain = domain; this.path = path; this.subdomains = subdomains; this.expires = expires;
+            this.secure = secure; this.httpOnly = httpOnly;
         }
         @Override public String toString() { return "[redacted cookie]"; }
     }
@@ -23,7 +27,8 @@ final class CookieJar {
         List<Entry> values = new ArrayList<>(); boolean netscape = input.contains("\t"); boolean expiredSession = false;
         if (netscape) {
             for (String original : input.split("\\r?\\n")) {
-                String line = original; if (line.startsWith("#HttpOnly_")) line = line.substring(10);
+                boolean httpOnly = original.startsWith("#HttpOnly_");
+                String line = original; if (httpOnly) line = line.substring(10);
                 else if (line.startsWith("#") || line.trim().isEmpty()) continue;
                 String[] fields = line.split("\t", -1); if (fields.length != 7) throw new ProfileProvider.Failure("COOKIE_INVALID");
                 String domain = fields[0].toLowerCase(Locale.ROOT).replaceFirst("^\\.", "");
@@ -35,7 +40,7 @@ final class CookieJar {
                 if (!fields[2].startsWith("/") || fields[2].contains("\r") || fields[2].contains("\n")) throw new ProfileProvider.Failure("COOKIE_INVALID");
                 validate(fields[5], fields[6]);
                 if (expires != 0 && expires <= now / 1000) { if (fields[5].equals("sessionid")) expiredSession = true; continue; }
-                values.add(new Entry(fields[5], fields[6], domain, fields[2], fields[1].equals("TRUE"), expires));
+                values.add(new Entry(fields[5], fields[6], domain, fields[2], fields[1].equals("TRUE"), expires, fields[3].equals("TRUE"), httpOnly));
             }
         } else {
             String line = input.trim(); if (line.regionMatches(true, 0, "Cookie:", 0, 7)) line = line.substring(7).trim();
@@ -91,7 +96,7 @@ final class CookieJar {
     private int headerLength(long now) throws ProfileProvider.Failure { try { return header(new URL("https://www.instagram.com/"), now).length(); } catch (java.net.MalformedURLException e) { throw new IllegalStateException(e); } }
     String encode() throws JSONException {
         JSONArray array = new JSONArray();
-        for (Entry e : entries) array.put(new JSONObject().put("name", e.name).put("value", e.value).put("domain", e.domain).put("path", e.path).put("subdomains", e.subdomains).put("expires", e.expires));
+        for (Entry e : entries) array.put(new JSONObject().put("name", e.name).put("value", e.value).put("domain", e.domain).put("path", e.path).put("subdomains", e.subdomains).put("expires", e.expires).put("secure", e.secure).put("httpOnly", e.httpOnly));
         return array.toString();
     }
     static CookieJar decode(String raw) throws JSONException, ProfileProvider.Failure {
@@ -100,7 +105,7 @@ final class CookieJar {
         for (int i = 0; i < array.length(); i++) {
             JSONObject o = array.getJSONObject(i); validate(o.getString("name"), o.getString("value"));
             String domain = o.getString("domain"); if (!domain.equals("instagram.com") && !domain.equals("www.instagram.com")) throw new ProfileProvider.Failure("COOKIE_INVALID");
-            entries.add(new Entry(o.getString("name"), o.getString("value"), domain, o.getString("path"), o.getBoolean("subdomains"), o.getLong("expires")));
+            entries.add(new Entry(o.getString("name"), o.getString("value"), domain, o.getString("path"), o.getBoolean("subdomains"), o.getLong("expires"), o.optBoolean("secure", true), o.optBoolean("httpOnly", false)));
         }
         return new CookieJar(entries);
     }

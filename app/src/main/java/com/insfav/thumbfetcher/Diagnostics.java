@@ -36,7 +36,7 @@ final class Diagnostics {
         return error instanceof OutOfMemoryError ? "IMPORT_MEMORY_LIMIT" : "INVALID_OR_UNREADABLE_JSON";
     }
     synchronized void export(OutputStream output) throws IOException {
-        output.write("INSFAV Thumb Fetcher 0.5.0\nEngine: bounded reusable Android WebView pool + trusted HTTPS image download.\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
+        output.write("INSFAV Thumb Fetcher 6.0.0\nEngine: bounded reusable Android WebView pool + trusted HTTPS image download.\nAccount identifiers and cookies redacted. No secret values exported.\n".getBytes(StandardCharsets.UTF_8));
         try (QueueStore queue = new QueueStore(context)) {
             android.content.SharedPreferences prefs=SessionState.prefs(context);
             boolean active=QueueControl.lock.get();
