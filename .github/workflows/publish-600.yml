@@ -1,6 +1,12 @@
 name: Publish Thumb Fetcher 6.0.0
 on:
   workflow_dispatch:
+  # One-time, narrowly scoped trigger for merging the verified release smoke fix.
+  push:
+    branches:
+      - main
+    paths:
+      - tools/release-smoke.sh
 permissions:
   contents: read
 jobs:
@@ -83,6 +89,7 @@ jobs:
           disable-animations: true
           script: bash tools/release-smoke.sh
       - name: Publish only the verified session update
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
