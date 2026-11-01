@@ -1,6 +1,9 @@
 name: Publish Thumb Fetcher 6.0.0
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/release-6.0.0-smoke-diagnostics
 permissions:
   contents: read
 jobs:
@@ -10,7 +13,7 @@ jobs:
     uses: ./.github/workflows/android.yml
   publish:
     needs: [checks, thumbnail-checks]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/release-6.0.0-smoke-diagnostics'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -83,6 +86,7 @@ jobs:
           disable-animations: true
           script: bash tools/release-smoke.sh
       - name: Publish only the verified session update
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
