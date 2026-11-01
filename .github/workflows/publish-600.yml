@@ -1,9 +1,12 @@
 name: Publish Thumb Fetcher 6.0.0
 on:
   workflow_dispatch:
+  # One-time, narrowly scoped trigger for merging the verified release smoke fix.
   push:
     branches:
-      - fix/release-6.0.0-smoke-diagnostics
+      - main
+    paths:
+      - tools/release-smoke.sh
 permissions:
   contents: read
 jobs:
@@ -13,7 +16,7 @@ jobs:
     uses: ./.github/workflows/android.yml
   publish:
     needs: [checks, thumbnail-checks]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/release-6.0.0-smoke-diagnostics'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
