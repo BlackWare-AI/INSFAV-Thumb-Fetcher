@@ -32,7 +32,7 @@ adb shell am start -W -n "$package/.MainActivity" > previous-launch.txt
 cat previous-launch.txt
 grep -q 'Status: ok' previous-launch.txt
 adb shell am force-stop "$package"
-adb install -r INSFAV-Thumb-Fetcher-6.0.0.apk
+adb install -r "${RELEASE_APK:-INSFAV-Thumb-Fetcher-6.0.0.apk}"
 adb shell pm grant "$package" android.permission.POST_NOTIFICATIONS
 adb shell am start -W -n "$package/.MainActivity" > release-launch.txt
 cat release-launch.txt
